@@ -30,6 +30,10 @@ To produce installers, install the Tauri CLI (`cargo install tauri-cli --version
 
 ## Template syntax
 
+**[docs/templates.md](docs/templates.md)** is the full guide. It covers a step-by-step first template,
+the language reference, layout rules, common patterns, and adding templates to the Examples menu.
+A quick overview:
+
 ```c
 #pragma pack(1)               // also pack(push, n) / pack(pop); default: natural C alignment
 #pragma endian big            // big | little | default (toolbar); applies to following fields
