@@ -1,10 +1,10 @@
 # HexEdit theme. Files in this folder (*.toml) appear in the Theme menu in the toolbar.
 # Edit a file, then pick "Reload themes" in that menu to see the change.
 #
-# name: shown in the menu. A theme named "Light" or "Dark" replaces that built-in theme,
-#       which also changes what "System" uses. Defaults to the file name.
-# base: "light" or "dark". Colors left out below come from that built-in theme, and it sets
-#       the title bar and native controls (scrollbars, checkboxes).
+# name: shown in the menu; defaults to the file name. "System" uses the themes named
+#       "Light" and "Dark", following the Windows setting.
+# base: "light" or "dark". Colors left out below come from HexEdit's standard light or dark
+#       palette, and the base sets the title bar and native controls (scrollbars, checkboxes).
 #
 # Colors are CSS colors: "#rgb", "#rrggbb", "#rrggbbaa", "rgb(...)", "hsl(...)", or a name like "tomato".
 # Every key is optional.

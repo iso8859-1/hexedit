@@ -1,8 +1,10 @@
 //! Color themes loaded from TOML files in the app's config folder.
 //!
-//! The built-in "Light" and "Dark" themes live in `ui/style.css`. A theme
-//! file names a base (light or dark) and overrides any of its colors. A file
-//! whose name matches a built-in theme replaces it.
+//! Every theme is a file, including the standard Light and Dark ones, which are
+//! installed into the folder like any other. A theme names a base (light or
+//! dark); colors it leaves out come from the standard palette of that base,
+//! the embedded copies of `themes/light.toml` and `themes/dark.toml`. Those
+//! palettes also color the app when no Light/Dark theme is installed.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -16,26 +18,38 @@ pub const KEYS: &[&str] = &[
     "cursor", "hl", "error", "error-bg", "offset", "zero", "f0", "f1", "f2", "f3", "f4", "f5",
 ];
 
-/// Written to a newly created themes folder.
-pub const EXAMPLE_FILE: &str = "solarized-dark.toml";
-pub const EXAMPLE: &str = include_str!("../../themes/solarized-dark.toml");
+const LIGHT: &str = include_str!("../../themes/light.toml");
+const DARK: &str = include_str!("../../themes/dark.toml");
+
+/// Themes installed into the themes folder: (file name, content).
+pub const STANDARD: &[(&str, &str)] = &[
+    ("light.toml", LIGHT),
+    ("dark.toml", DARK),
+    ("solarized-dark.toml", include_str!("../../themes/solarized-dark.toml")),
+];
+
+/// Lists the standard files already installed once, so deleted ones stay deleted
+/// and files added in later versions still get installed.
+const INSTALLED_LIST: &str = ".installed";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Theme {
     pub name: String,
-    /// "light" or "dark": the colors not set here, and the window title bar
+    /// "light" or "dark": where the colors not set here come from, and the window title bar
     pub base: String,
     /// key (without "--") -> CSS color
     pub colors: BTreeMap<String, String>,
-    /// the file it was loaded from; none for built-in themes
-    pub file: Option<String>,
+    /// the file it was loaded from
+    pub file: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ThemeList {
     pub dir: String,
-    pub keys: Vec<&'static str>,
+    /// the installed themes, sorted by name
     pub themes: Vec<Theme>,
+    /// base -> complete standard palette, for colors a theme leaves out
+    pub fallback: BTreeMap<&'static str, BTreeMap<String, String>>,
     /// problems found while loading, one per line, naming the file
     pub warnings: Vec<String>,
 }
@@ -47,10 +61,6 @@ struct ThemeFile {
     base: Option<String>,
     #[serde(default)]
     colors: BTreeMap<String, toml::Value>,
-}
-
-fn builtin(name: &str, base: &str) -> Theme {
-    Theme { name: name.into(), base: base.into(), colors: BTreeMap::new(), file: None }
 }
 
 /// Accepts hex colors, functional notations (`rgb(...)`, `hsl(...)`, ...) and
@@ -101,12 +111,25 @@ pub fn parse(text: &str, stem: &str, file: &str) -> Result<(Theme, Vec<String>),
         }
     }
     let name = f.name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| stem.to_string());
-    Ok((Theme { name, base: base.into(), colors, file: Some(file.to_string()) }, warnings))
+    Ok((Theme { name, base: base.into(), colors, file: file.to_string() }, warnings))
 }
 
-/// Built-in themes plus every `*.toml` in `dir`, sorted by file name.
+/// The standard palettes, from the files embedded at build time.
+pub fn fallback() -> BTreeMap<&'static str, BTreeMap<String, String>> {
+    [("light", LIGHT, "light.toml"), ("dark", DARK, "dark.toml")]
+        .into_iter()
+        .map(|(base, text, file)| {
+            // checked complete and valid by the tests
+            let colors = parse(text, "", file).map(|(t, _)| t.colors).unwrap_or_default();
+            (base, colors)
+        })
+        .collect()
+}
+
+/// Every `*.toml` in `dir`. When two files use the same name, the one whose
+/// file name sorts last wins.
 pub fn load(dir: &Path) -> ThemeList {
-    let mut themes = vec![builtin("Light", "light"), builtin("Dark", "dark")];
+    let mut themes: Vec<Theme> = Vec::new();
     let mut warnings = Vec::new();
     let mut files: Vec<PathBuf> = match fs::read_dir(dir) {
         Ok(rd) => rd
@@ -131,9 +154,7 @@ pub fn load(dir: &Path) -> ThemeList {
                 warnings.extend(w);
                 match themes.iter_mut().find(|t| t.name.eq_ignore_ascii_case(&theme.name)) {
                     Some(existing) => {
-                        if let Some(other) = &existing.file {
-                            warnings.push(format!("{file}: replaces theme \"{}\" from {other}", theme.name));
-                        }
+                        warnings.push(format!("{file}: replaces theme \"{}\" from {}", theme.name, existing.file));
                         *existing = theme;
                     }
                     None => themes.push(theme),
@@ -142,17 +163,33 @@ pub fn load(dir: &Path) -> ThemeList {
             Err(e) => warnings.push(e),
         }
     }
-    ThemeList { dir: dir.display().to_string(), keys: KEYS.to_vec(), themes, warnings }
+    themes.sort_by_key(|t| t.name.to_lowercase());
+    ThemeList { dir: dir.display().to_string(), themes, fallback: fallback(), warnings }
 }
 
-/// Creates the folder with an example theme the first time; afterwards the
-/// user's deletions stick.
-pub fn ensure_dir(dir: &Path) -> std::io::Result<()> {
-    if dir.exists() {
-        return Ok(());
-    }
+/// Creates the folder and installs each standard theme once. A standard file
+/// the user deleted is not installed again, and an existing file is never
+/// overwritten.
+pub fn install_standard(dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dir)?;
-    fs::write(dir.join(EXAMPLE_FILE), EXAMPLE)
+    let list_path = dir.join(INSTALLED_LIST);
+    let mut installed: Vec<String> =
+        fs::read_to_string(&list_path).unwrap_or_default().lines().map(str::to_string).collect();
+    let before = installed.len();
+    for (file, text) in STANDARD {
+        if installed.iter().any(|f| f == file) {
+            continue;
+        }
+        let path = dir.join(file);
+        if !path.exists() {
+            fs::write(&path, text)?;
+        }
+        installed.push(file.to_string());
+    }
+    if installed.len() != before {
+        fs::write(&list_path, installed.join("\n") + "\n")?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -186,33 +223,55 @@ mod tests {
         let e = parse("# c\nname = ", "x", "x.toml").unwrap_err();
         assert!(e.starts_with("x.toml: line 2: ") && !e.contains('\n'), "{e}");
         assert!(!valid_color("red; x: y") && !valid_color("url(a)") && !valid_color("#ggg"));
-        // the bundled example is valid and complete
-        let (t, w) = parse(EXAMPLE, "solarized-dark", EXAMPLE_FILE).unwrap();
-        assert!(w.is_empty(), "{w:?}");
-        assert_eq!(t.colors.len(), KEYS.len());
+        // the standard themes are valid and complete
+        for (file, text) in STANDARD {
+            let (t, w) = parse(text, "", file).unwrap();
+            assert!(w.is_empty(), "{file}: {w:?}");
+            assert_eq!(t.colors.len(), KEYS.len(), "{file}");
+        }
+        let fb = fallback();
+        assert_eq!((fb["light"].len(), fb["dark"].len()), (KEYS.len(), KEYS.len()));
+        assert_ne!(fb["light"]["bg"], fb["dark"]["bg"]);
     }
 
     #[test]
-    fn load_folder() {
+    fn install_and_load() {
         let dir = std::env::temp_dir().join(format!("hexedit-themes-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        ensure_dir(&dir).unwrap();
-        fs::write(dir.join("a.toml"), "name = \"dark\"\nbase = \"dark\"\n[colors]\nbg = \"#000\"").unwrap();
+        install_standard(&dir).unwrap();
+        let names = |l: &ThemeList| l.themes.iter().map(|t| t.name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(&load(&dir)), ["Dark", "Light", "Solarized Dark"]);
+
+        fs::write(dir.join("my-dark.toml"), "name = \"dark\"\nbase = \"dark\"\n[colors]\nbg = \"#000\"").unwrap();
         fs::write(dir.join("b.toml"), "name = \"Broken").unwrap();
         fs::write(dir.join("notes.txt"), "ignored").unwrap();
         let l = load(&dir);
-        let names: Vec<&str> = l.themes.iter().map(|t| t.name.as_str()).collect();
-        // the file replaces the built-in Dark in place
-        assert_eq!(names, ["Light", "dark", "Solarized Dark"]);
-        assert_eq!(l.themes[1].colors["bg"], "#000");
-        assert_eq!(l.warnings.len(), 1);
+        // my-dark.toml sorts after dark.toml and replaces its theme
+        assert_eq!(names(&l), ["dark", "Light", "Solarized Dark"]);
+        assert_eq!(l.themes[0].colors, BTreeMap::from([("bg".to_string(), "#000".to_string())]));
+        assert_eq!(l.warnings.len(), 2, "{:?}", l.warnings);
         assert!(l.warnings[0].starts_with("b.toml: "));
-        // an existing folder is left alone
-        fs::remove_file(dir.join(EXAMPLE_FILE)).unwrap();
-        ensure_dir(&dir).unwrap();
-        assert!(!dir.join(EXAMPLE_FILE).exists());
+        assert!(l.warnings[1].starts_with("my-dark.toml: replaces theme"));
+
+        // deleted standard themes stay deleted, edited ones are not overwritten
+        fs::remove_file(dir.join("light.toml")).unwrap();
+        fs::write(dir.join("dark.toml"), "name = \"Dark\"").unwrap();
+        install_standard(&dir).unwrap();
+        assert!(!dir.join("light.toml").exists());
+        assert_eq!(fs::read_to_string(dir.join("dark.toml")).unwrap(), "name = \"Dark\"");
+
+        // a folder from before the install list: missing standard files are added once
+        fs::remove_file(dir.join(INSTALLED_LIST)).unwrap();
+        install_standard(&dir).unwrap();
+        assert!(dir.join("light.toml").exists());
+        fs::remove_file(dir.join("light.toml")).unwrap();
+        install_standard(&dir).unwrap();
+        assert!(!dir.join("light.toml").exists());
+
+        // without files there are no themes, only the fallback palettes
         fs::remove_dir_all(&dir).unwrap();
-        // a missing folder only gives the built-ins
-        assert_eq!(load(&dir).themes.len(), 2);
+        let l = load(&dir);
+        assert!(l.themes.is_empty() && l.warnings.is_empty());
+        assert_eq!(l.fallback.len(), 2);
     }
 }

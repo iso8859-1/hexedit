@@ -1,8 +1,12 @@
 # Themes
 
-HexEdit has two built-in themes, **Light** and **Dark**. You can add more, or change the built-in ones,
-with TOML files. Choose a theme in the **Theme** menu at the right of the toolbar. **System** follows
-the Windows light/dark setting and uses the themes named Light and Dark.
+Every HexEdit theme is a TOML file, including the standard **Light** and **Dark**. You can edit,
+replace or delete any of them, and add new ones. Choose a theme in the **Theme** menu at the right of
+the toolbar. **System** follows the Windows light/dark setting and uses the themes named Light and
+Dark.
+
+If no theme files are installed, the menu offers only **System**. HexEdit then uses its standard light
+or dark palette, which is built into the program, so it always has colors.
 
 ## The themes folder
 
@@ -13,8 +17,18 @@ Theme files live in your settings folder:
 ```
 
 On Windows this is usually `C:\Users\<you>\AppData\Roaming\dev.hexedit.app\themes`. Choose
-**Open themes folder…** in the Theme menu to open it in Explorer. The folder is created on the first
-start, with one example, `solarized-dark.toml`. If you delete the example, it stays deleted.
+**Open themes folder…** in the Theme menu to open it in Explorer.
+
+On the first start, HexEdit creates the folder and installs its standard themes there: `light.toml`,
+`dark.toml` and `solarized-dark.toml`. Each standard theme is installed only once. The hidden file
+`.installed` in the folder records which ones were installed, so:
+
+- a standard theme you delete stays deleted,
+- a standard theme you edit is never overwritten,
+- standard themes added in later versions of HexEdit still get installed.
+
+To get the original standard themes back, delete `.installed` (and the files you want replaced), then
+restart HexEdit.
 
 - **Install a theme:** copy its `.toml` file into the folder, then choose **Reload themes** in the Theme menu.
 - **Change a theme:** edit the file and choose **Reload themes**. If that theme is selected, the new
@@ -35,16 +49,17 @@ fg     = "#93a1a1"
 accent = "#268bd2"
 ```
 
-**`base`** is the built-in theme to start from. Any color you leave out comes from it, so a theme can
-change a single color. The base also sets the window title bar and the native controls (scrollbars,
-checkboxes) to light or dark.
+**`base`** picks the standard palette to start from. Any color you leave out comes from it, so a theme
+can change a single color. The standard palettes are the original `light.toml` and `dark.toml`, built
+into the program; editing your installed copies doesn't change them. The base also sets the window
+title bar and the native controls (scrollbars, checkboxes) to light or dark.
 
 **`[colors]`** sets colors by key. Values are CSS colors: `"#rgb"`, `"#rrggbb"`, `"#rrggbbaa"`,
 `"rgb(0 43 54)"`, `"hsl(...)"`, `"oklch(...)"`, or names like `"tomato"`.
 
-**Replacing a built-in theme.** A file with `name = "Dark"` (or `"Light"`, case doesn't matter)
-replaces that built-in theme, and System uses it too. For example, to keep the dark theme but use an
-orange accent:
+**Changing Light or Dark.** Edit `light.toml` or `dark.toml` directly. Or replace one with a smaller
+file of your own that has the same name. For example, to keep the dark theme but use an orange
+accent, replace `dark.toml` with:
 
 ```toml
 name = "Dark"
@@ -54,7 +69,8 @@ base = "dark"
 accent = "#ff8800"
 ```
 
-If two files use the same name, the one whose file name sorts last wins, and HexEdit shows a warning.
+System uses whatever themes are named Light and Dark (case doesn't matter). If two files use the same
+name, the one whose file name sorts last wins, and HexEdit shows a warning.
 
 ## Color keys
 
@@ -79,9 +95,10 @@ If two files use the same name, the one whose file name sorts last wins, and Hex
 | `zero` | `00` bytes and non-printable characters |
 | `f0` … `f5` | template field colors, used in turn for decoded fields (backgrounds in the hex view) |
 
-The keys are the CSS variables in `ui/style.css` without the leading `--`. Writing `"--bg"` works too.
-The example file `solarized-dark.toml` sets every key and has a comment on each one, so it's a good
-starting point. Its source is in the repository at [`themes/solarized-dark.toml`](../themes/solarized-dark.toml).
+The keys are CSS variables (`--bg`, ...) used by `ui/style.css`, which has no colors of its own.
+Writing `"--bg"` in a theme works too. The standard theme files set every key and have a comment on
+each one, so copying one is a good way to start a new theme. Their sources are in the repository's
+[`themes/`](../themes/) folder.
 
 ## Errors
 

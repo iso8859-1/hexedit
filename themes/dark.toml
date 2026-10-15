@@ -1,0 +1,39 @@
+# HexEdit theme. Files in this folder (*.toml) appear in the Theme menu in the toolbar.
+# Edit a file, then pick "Reload themes" in that menu to see the change.
+#
+# name: shown in the menu; defaults to the file name. "System" uses the themes named
+#       "Light" and "Dark", following the Windows setting.
+# base: "light" or "dark". Colors left out below come from HexEdit's standard light or dark
+#       palette, and the base sets the title bar and native controls (scrollbars, checkboxes).
+#
+# Colors are CSS colors: "#rgb", "#rrggbb", "#rrggbbaa", "rgb(...)", "hsl(...)", or a name like "tomato".
+# Every key is optional.
+
+name = "Dark"
+base = "dark"
+
+[colors]
+bg         = "#1b1e24"   # main background: hex view, editor, inputs
+bg-alt     = "#23272e"   # buttons, selects, hovered rows
+bg-panel   = "#1f2329"   # toolbar, side panel, status bar, tree header, dialogs
+fg         = "#d8dce3"   # main text
+muted      = "#8a919d"   # secondary text: labels, tree types/offsets/sizes
+faint      = "#5c636e"   # de-emphasized text: past-the-end bytes, unavailable inspector values
+border     = "#343a44"   # borders and separators
+accent     = "#5b9cff"   # primary button, active tab, focus ring, links, splitter hover
+accent-fg  = "#0d1117"   # text on the accent color
+sel        = "#2f5597"   # selected bytes, selected tree row
+sel-strong = "#3a5a8c"   # cursor byte in the focused hex view
+cursor     = "#7fb2ff"   # cursor outline (filled in insert mode)
+hl         = "#6b5a1e"   # bytes of the hovered inspector value / tree row
+error      = "#ff7b72"   # error text
+error-bg   = "#3a1f1f"   # background of template error messages
+offset     = "#6f7785"   # offset column and header of the hex view
+zero       = "#545b66"   # 00 bytes and non-printable characters
+# template field colors, cycled through the decoded fields (backgrounds in the hex view)
+f0         = "#233327"
+f1         = "#222c3d"
+f2         = "#3a2c22"
+f3         = "#30263b"
+f4         = "#1f3535"
+f5         = "#3a2730"

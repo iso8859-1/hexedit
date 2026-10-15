@@ -14,10 +14,10 @@ A hex editor built with Rust and [Tauri 2](https://tauri.app). It has a data ins
   decodes the target only when clicked, with Back navigation, so large files with many structures stay
   fast. Examples are bundled for BMP, PNG, WAV, PE, and ZIP.
 
-- **Themes**: light and dark built in, chosen in the toolbar (**System** follows the Windows setting),
-  and the window title bar switches along with them. More themes are TOML files in
-  `%APPDATA%\dev.hexedit.app	hemes`, which can also change the built-in ones; see
-  **[docs/themes.md](docs/themes.md)**.
+- **Themes**: every theme is a TOML file in `%APPDATA%\dev.hexedit.app\themes`, including the standard
+  Light and Dark, so they can be edited, replaced or removed, and new ones added. Choose one in the
+  toolbar; **System** follows the Windows setting. The window title bar switches along with the theme.
+  See **[docs/themes.md](docs/themes.md)**.
 
 ## Build and run
 
@@ -114,7 +114,7 @@ src-tauri/src/
   themes.rs        theme files (TOML) from the config folder
 ui/                index.html, style.css, main.js (wiring/keys), hexview.js, inspector.js, template.js
 templates/         example templates, embedded into the binary
-themes/            example theme, written to a new themes folder
+themes/            standard themes (Light, Dark, Solarized Dark), installed into the themes folder
 ```
 
 ## Notes

@@ -362,22 +362,33 @@ fn themes_dir(app: &AppHandle) -> CmdResult<PathBuf> {
     Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("themes"))
 }
 
-/// Built-in themes plus the files in the themes folder (created on first use).
+/// The themes in the themes folder, after installing the standard ones. Never
+/// fails: the page needs the fallback palettes for its colors.
 #[tauri::command]
-fn theme_list(app: AppHandle) -> CmdResult<themes::ThemeList> {
-    let dir = themes_dir(&app)?;
-    let created = themes::ensure_dir(&dir);
+fn theme_list(app: AppHandle) -> themes::ThemeList {
+    let dir = match themes_dir(&app) {
+        Ok(d) => d,
+        Err(e) => {
+            return themes::ThemeList {
+                dir: String::new(),
+                themes: vec![],
+                fallback: themes::fallback(),
+                warnings: vec![format!("no settings folder: {e}")],
+            }
+        }
+    };
+    let installed = themes::install_standard(&dir);
     let mut list = themes::load(&dir);
-    if let Err(e) = created {
-        list.warnings.push(format!("cannot create {}: {e}", dir.display()));
+    if let Err(e) = installed {
+        list.warnings.push(format!("cannot install the standard themes in {}: {e}", dir.display()));
     }
-    Ok(list)
+    list
 }
 
 #[tauri::command]
 fn theme_open_folder(app: AppHandle) -> CmdResult<()> {
     let dir = themes_dir(&app)?;
-    themes::ensure_dir(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     let opener = if cfg!(windows) {
         "explorer"
     } else if cfg!(target_os = "macos") {

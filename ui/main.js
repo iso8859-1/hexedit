@@ -433,13 +433,14 @@ async function initSettings() {
   });
 }
 
-// Themes: the built-in Light/Dark palettes in style.css, plus TOML files from the
-// themes folder that set a base palette and override some of its colors.
-// "System" uses the themes named Light and Dark, following Windows.
+// Themes are TOML files in the themes folder, the standard Light and Dark included.
+// Each names a base (light/dark) whose standard palette fills in the colors it leaves
+// out. "System" uses the themes named Light and Dark, following Windows, or the
+// standard palettes when those are not installed.
 const darkQuery = matchMedia('(prefers-color-scheme: dark)');
 const THEME_RELOAD = '\u0000reload';
 const THEME_FOLDER = '\u0000folder';
-const themes = { list: [], choice: 'system' };
+const themes = { list: [], fallback: null, choice: 'system' };
 
 function findTheme(name) {
   return themes.list.find((t) => t.name.toLowerCase() === name.toLowerCase());
@@ -452,12 +453,15 @@ async function applyTheme() {
   try { await win?.setTheme(chosen ? chosen.base : null); } catch { /* not permitted */ }
   const osBase = darkQuery.matches ? 'dark' : 'light';
   const theme = chosen ?? findTheme(osBase) ?? { base: osBase, colors: {} };
+  // without the palettes (backend unreachable) keep what index.html applied
+  if (!themes.fallback) return;
+  const colors = { ...themes.fallback[theme.base], ...theme.colors };
   const root = document.documentElement;
   for (const p of [...root.style]) if (p.startsWith('--')) root.style.removeProperty(p);
   root.dataset.theme = theme.base;
-  for (const [k, v] of Object.entries(theme.colors)) root.style.setProperty(`--${k}`, v);
+  for (const [k, v] of Object.entries(colors)) root.style.setProperty(`--${k}`, v);
   // for the first paint of the next start (see index.html)
-  store('ui.themeApplied', { base: theme.base, colors: theme.colors });
+  store('ui.themeApplied', { base: theme.base, colors });
 }
 
 function fillThemeMenu() {
@@ -465,7 +469,7 @@ function fillThemeMenu() {
   sel.replaceChildren(new Option('System', 'system'));
   for (const t of themes.list) {
     const o = new Option(t.name, t.name);
-    o.title = t.file ? `${t.file} (based on ${t.base})` : `built-in`;
+    o.title = `${t.file} (${t.base})`;
     sel.append(o);
   }
   const actions = document.createElement('optgroup');
@@ -480,8 +484,10 @@ async function loadThemes(report) {
   try {
     const r = await api.themeList();
     themes.list = r.themes;
+    themes.fallback = r.fallback;
+    store('ui.themeFallback', r.fallback);
     if (r.warnings.length) toast(`Themes: ${r.warnings.join(' · ')}`, true);
-    else if (report) toast(`Loaded ${r.themes.filter((t) => t.file).length} theme file(s) from ${r.dir}`);
+    else if (report) toast(`Loaded ${r.themes.length} theme(s) from ${r.dir}`);
   } catch (e) {
     toast(String(e), true);
   }

@@ -6,8 +6,9 @@
   <title>HexEdit</title>
   <link rel="stylesheet" href="style.css">
   <script>
-    // re-apply the last theme before the first paint, so a dark start does not flash white;
-    // main.js loads the theme files and applies the current version afterwards
+    // re-apply the last theme's colors before the first paint, so a dark start does not flash
+    // white; main.js loads the theme files and applies the current version afterwards.
+    // (style.css has no colors of its own: they all come from the theme files)
     (() => {
       const get = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
       const osBase = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -16,7 +17,8 @@
       const fits = last && (get('ui.theme') !== 'system' || last.base === osBase);
       const root = document.documentElement;
       root.dataset.theme = fits ? last.base : osBase;
-      if (fits) for (const [k, v] of Object.entries(last.colors ?? {})) root.style.setProperty(`--${k}`, v);
+      const colors = fits ? last.colors : get('ui.themeFallback')?.[osBase];
+      for (const [k, v] of Object.entries(colors ?? {})) root.style.setProperty(`--${k}`, v);
     })();
   </script>
 </head>

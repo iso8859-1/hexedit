@@ -1,60 +1,13 @@
 :root {
-  --bg: #ffffff;
-  --bg-alt: #f4f5f7;
-  --bg-panel: #fafbfc;
-  --fg: #1d2330;
-  --muted: #6b7280;
-  --faint: #a0a6b1;
-  --border: #d9dde3;
-  --accent: #2563eb;
-  --accent-fg: #ffffff;
-  --sel: #a9c8ff;
-  --sel-strong: #9ec2ff;
-  --cursor: #2563eb;
-  --hl: #ffe08a;
-  --error: #c62828;
-  --error-bg: #fdecec;
-  --offset: #7a8394;
-  --zero: #b3b9c4;
-  --f0: #e4f1e1;
-  --f1: #e3ecfa;
-  --f2: #fbe9dc;
-  --f3: #efe5f7;
-  --f4: #e0f3f3;
-  --f5: #f8eef0;
   --row-h: 20px;
   --mono: "Cascadia Mono", "Consolas", "JetBrains Mono", "Menlo", monospace;
   --ui: "Segoe UI", system-ui, -apple-system, sans-serif;
   color-scheme: light;
 }
 
-/* set on <html> from the Theme setting; "system" resolves to light or dark */
-:root[data-theme="dark"] {
-  --bg: #1b1e24;
-  --bg-alt: #23272e;
-  --bg-panel: #1f2329;
-  --fg: #d8dce3;
-  --muted: #8a919d;
-  --faint: #5c636e;
-  --border: #343a44;
-  --accent: #5b9cff;
-  --accent-fg: #0d1117;
-  --sel: #2f5597;
-  --sel-strong: #3a5a8c;
-  --cursor: #7fb2ff;
-  --hl: #6b5a1e;
-  --error: #ff7b72;
-  --error-bg: #3a1f1f;
-  --offset: #6f7785;
-  --zero: #545b66;
-  --f0: #233327;
-  --f1: #222c3d;
-  --f2: #3a2c22;
-  --f3: #30263b;
-  --f4: #1f3535;
-  --f5: #3a2730;
-  color-scheme: dark;
-}
+/* data-theme is the theme's base. The colors (--bg, --fg, ...) are set on <html> by main.js
+   from the theme files; see docs/themes.md. */
+:root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }

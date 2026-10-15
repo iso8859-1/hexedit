@@ -1,0 +1,39 @@
+# HexEdit theme. Files in this folder (*.toml) appear in the Theme menu in the toolbar.
+# Edit a file, then pick "Reload themes" in that menu to see the change.
+#
+# name: shown in the menu; defaults to the file name. "System" uses the themes named
+#       "Light" and "Dark", following the Windows setting.
+# base: "light" or "dark". Colors left out below come from HexEdit's standard light or dark
+#       palette, and the base sets the title bar and native controls (scrollbars, checkboxes).
+#
+# Colors are CSS colors: "#rgb", "#rrggbb", "#rrggbbaa", "rgb(...)", "hsl(...)", or a name like "tomato".
+# Every key is optional.
+
+name = "Light"
+base = "light"
+
+[colors]
+bg         = "#ffffff"   # main background: hex view, editor, inputs
+bg-alt     = "#f4f5f7"   # buttons, selects, hovered rows
+bg-panel   = "#fafbfc"   # toolbar, side panel, status bar, tree header, dialogs
+fg         = "#1d2330"   # main text
+muted      = "#6b7280"   # secondary text: labels, tree types/offsets/sizes
+faint      = "#a0a6b1"   # de-emphasized text: past-the-end bytes, unavailable inspector values
+border     = "#d9dde3"   # borders and separators
+accent     = "#2563eb"   # primary button, active tab, focus ring, links, splitter hover
+accent-fg  = "#ffffff"   # text on the accent color
+sel        = "#a9c8ff"   # selected bytes, selected tree row
+sel-strong = "#9ec2ff"   # cursor byte in the focused hex view
+cursor     = "#2563eb"   # cursor outline (filled in insert mode)
+hl         = "#ffe08a"   # bytes of the hovered inspector value / tree row
+error      = "#c62828"   # error text
+error-bg   = "#fdecec"   # background of template error messages
+offset     = "#7a8394"   # offset column and header of the hex view
+zero       = "#b3b9c4"   # 00 bytes and non-printable characters
+# template field colors, cycled through the decoded fields (backgrounds in the hex view)
+f0         = "#e4f1e1"
+f1         = "#e3ecfa"
+f2         = "#fbe9dc"
+f3         = "#efe5f7"
+f4         = "#e0f3f3"
+f5         = "#f8eef0"
