@@ -570,7 +570,7 @@ async function main() {
   setInfo(await api.docInfo());
   view.layoutChanged();
 
-  new Inspector({ edit });
+  new Inspector({ edit, toast });
   new TemplatePanel({ selectRange, toast });
   initSplitter();
   initTabs();

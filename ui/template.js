@@ -2,6 +2,7 @@
 
 import { api } from './api.js';
 import { state, on, emit, hex, load, store, parseOffset } from './state.js';
+import { addCopyButton } from './copy.js';
 
 const INSTANCES = '\u0000instances';
 const COLORS = 6;
@@ -369,6 +370,10 @@ export class TemplatePanel {
       });
       valueCell.replaceChildren(a);
       if (node.error) valueCell.prepend(`⚠ ${node.error} · `);
+    }
+    // the decoded value only, without warnings or bit ranges; "[n]" of an array is just its length
+    if (node.value && !(hasKids && /^\[\d+\]$/.test(node.value))) {
+      addCopyButton(valueCell, node.value, (m) => this.toast(m, true));
     }
     row.append(
       name,

@@ -2,6 +2,7 @@
 
 import { api } from './api.js';
 import { state, on, emit, selection, hasSelection, hex } from './state.js';
+import { addCopyButton } from './copy.js';
 
 const GROUPS = [
   ['Integers', ['bin', 'i8', 'u8', 'i16', 'u16', 'i24', 'u24', 'i32', 'u32', 'i64', 'u64']],
@@ -14,8 +15,9 @@ const GROUPS = [
 ];
 
 export class Inspector {
-  constructor({ edit }) {
+  constructor({ edit, toast }) {
     this.edit = edit;          // (fn) => queued edit returning DocInfo
+    this.toast = toast;
     this.body = document.querySelector('#inspector tbody');
     this.head = document.getElementById('inspector-head');
     this.offset = 0;
@@ -71,6 +73,7 @@ export class Inspector {
     value.title = e.value ?? 'not enough data';
     tr.append(label, value);
     if (e.value === null) tr.classList.add('na');
+    else addCopyButton(value, e.value, (m) => this.toast?.(m, true));
     tr.addEventListener('mouseenter', () => {
       state.highlight = e.value === null ? null : { start: this.offset, len: e.size };
       emit('highlight');
