@@ -1,0 +1,5 @@
+# Code coverage (needs: rustup component add llvm-tools-preview; cargo install cargo-llvm-cov --locked)
+[alias]
+cov = "llvm-cov"                                                # per-file summary table
+cov-html = "llvm-cov --html --open"                             # report in target/llvm-cov/html
+cov-lcov = "llvm-cov --lcov --output-path target/lcov.info"     # for editor gutters / CI tools

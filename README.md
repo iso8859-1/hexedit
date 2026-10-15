@@ -33,6 +33,29 @@ To produce installers, install the Tauri CLI (`cargo install tauri-cli --version
 `cargo tauri build`. The UI is embedded at compile time. If an edit in `ui/` doesn't show up, touch
 `src-tauri/src/lib.rs` before rebuilding.
 
+## Code coverage
+
+Coverage is measured with [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov). It needs a
+one-time setup:
+
+```sh
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov --locked
+```
+
+Then, in `src-tauri`, these aliases (defined in `src-tauri/.cargo/config.toml`) run the tests with
+instrumentation:
+
+```sh
+cargo cov          # per-file summary table in the terminal
+cargo cov-html     # HTML report with line-by-line highlighting, opened in the browser
+cargo cov-lcov     # target/lcov.info, for editor gutters (e.g. VS Code "Coverage Gutters") or CI
+```
+
+Any `cargo llvm-cov` option can be added, e.g. `cargo cov -- template` to run only matching tests.
+`lib.rs` and `main.rs` contain the Tauri commands and app setup. The unit tests don't exercise them, so
+they show as uncovered. The frontend (`ui/`) has no tests and is not measured.
+
 ## Template syntax
 
 **[docs/templates.md](docs/templates.md)** is the full guide. It covers a step-by-step first template,
