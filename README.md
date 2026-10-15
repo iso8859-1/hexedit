@@ -57,16 +57,19 @@ NSIS tools, so it needs internet access.
 
 - Installs to `%LOCALAPPDATA%\HexEdit` and adds a Start menu entry and an entry under
   *Settings > Apps*, all for the current user only.
+- Adds **Open with HexEdit** to the Explorer context menu of every file (on Windows 11 under
+  *Show more options*), registered for the current user in `HKCU\Software\Classes\*\shell\HexEdit`.
+  The installer hooks in `src-tauri/windows/hooks.nsh` add it, and uninstalling removes it.
 - Running a newer setup over an existing install updates it in place.
 - If WebView2 is missing (rare on Windows 10/11), it downloads and installs it silently, which needs
   internet access.
-- Uninstalling removes the program, but keeps the settings and themes in
+- Uninstalling removes the program and the context menu entry, but keeps the settings and themes in
   `%APPDATA%\dev.hexedit.app` unless *Delete the application data* is checked in the uninstaller.
 - For scripted installs, `HexEdit_..._x64-setup.exe /S` installs silently, and
   `%LOCALAPPDATA%\HexEdit\uninstall.exe /S` uninstalls silently.
 
 **Configuration** is the `bundle` section of `src-tauri/tauri.conf.json`: publisher, descriptions,
-icons, and the NSIS settings (`installMode: currentUser`). The version comes from `version` in
+icons, and the NSIS settings (`installMode: currentUser`, `installerHooks`). The version comes from `version` in
 `src-tauri/Cargo.toml`, so bump it there before building a release.
 
 **Icons** in `src-tauri/icons/` were generated from `icon.png`. To change the icon, replace `icon.png`

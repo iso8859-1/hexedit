@@ -28,7 +28,7 @@
     "targets": [
       "nsis"
     ],
-    "publisher": "HexEdit",
+    "publisher": "Tobias Langner",
     "category": "DeveloperTool",
     "shortDescription": "Hex editor with data inspector and C-struct templates",
     "longDescription": "A hex editor with a data inspector for common data types and C-struct templates that decode file formats into a tree.",
@@ -47,7 +47,8 @@
       "nsis": {
         "installMode": "currentUser",
         "installerIcon": "icons/icon.ico",
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerHooks": "./windows/hooks.nsh"
       }
     }
   }
