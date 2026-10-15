@@ -31,9 +31,55 @@ cargo test                     # template engine, inspector, document model
 cargo build --release          # binary in src-tauri/target/release
 ```
 
-To produce installers, install the Tauri CLI (`cargo install tauri-cli --version "^2"`) and run
-`cargo tauri build`. The UI is embedded at compile time. If an edit in `ui/` doesn't show up, touch
-`src-tauri/src/lib.rs` before rebuilding.
+The UI is embedded at compile time. If an edit in `ui/` doesn't show up, touch `src-tauri/src/lib.rs`
+before rebuilding.
+
+## Building the installer
+
+HexEdit ships as an NSIS setup program that installs per user, so it needs no administrator rights.
+It requires the Tauri CLI, a one-time install:
+
+```sh
+cargo install tauri-cli --version "^2" --locked
+```
+
+Then, in `src-tauri`:
+
+```sh
+cargo tauri build
+```
+
+This makes a release build and packages it as
+`src-tauri/target/release/bundle/nsis/HexEdit_<version>_x64-setup.exe`. The first run downloads the
+NSIS tools, so it needs internet access.
+
+**What the installer does:**
+
+- Installs to `%LOCALAPPDATA%\HexEdit` and adds a Start menu entry and an entry under
+  *Settings > Apps*, all for the current user only.
+- Running a newer setup over an existing install updates it in place.
+- If WebView2 is missing (rare on Windows 10/11), it downloads and installs it silently, which needs
+  internet access.
+- Uninstalling removes the program, but keeps the settings and themes in
+  `%APPDATA%\dev.hexedit.app` unless *Delete the application data* is checked in the uninstaller.
+- For scripted installs, `HexEdit_..._x64-setup.exe /S` installs silently, and
+  `%LOCALAPPDATA%\HexEdit\uninstall.exe /S` uninstalls silently.
+
+**Configuration** is the `bundle` section of `src-tauri/tauri.conf.json`: publisher, descriptions,
+icons, and the NSIS settings (`installMode: currentUser`). The version comes from `version` in
+`src-tauri/Cargo.toml`, so bump it there before building a release.
+
+**Icons** in `src-tauri/icons/` were generated from `icon.png`. To change the icon, replace `icon.png`
+(ideally 1024×1024) and regenerate the desktop sizes:
+
+```sh
+cargo tauri icon icons/icon.png -o <temp folder>
+# copy icon.ico, icon.icns, 32x32.png, 128x128.png, 128x128@2x.png back into icons/
+```
+
+The installer is not code-signed, so Windows SmartScreen shows a warning the first time it runs.
+`cargo tauri build` warns that the identifier `dev.hexedit.app` ends in `.app`. That only matters for
+macOS builds. Changing the identifier would move the settings folder, so it is left as is.
 
 ## Code coverage
 

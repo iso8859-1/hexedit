@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "HexEdit",
-  "version": "0.1.0",
   "identifier": "dev.hexedit.app",
   "build": {
     "frontendDist": "../ui"
@@ -26,7 +25,30 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "icon": ["icons/icon.png", "icons/icon.ico"]
+    "targets": [
+      "nsis"
+    ],
+    "publisher": "HexEdit",
+    "category": "DeveloperTool",
+    "shortDescription": "Hex editor with data inspector and C-struct templates",
+    "longDescription": "A hex editor with a data inspector for common data types and C-struct templates that decode file formats into a tree.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "displayLanguageSelector": false
+      }
+    }
   }
 }
