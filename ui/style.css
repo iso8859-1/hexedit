@@ -320,6 +320,9 @@ main { flex: 1; display: flex; min-height: 0; }
 .trow .type, .trow .off, .trow .size { color: var(--muted); }
 .trow.err .value { color: var(--error); }
 .trow.more { color: var(--muted); font-style: italic; }
+.trow.more > span { grid-column: 1 / -1; }
+.trow a.link { color: var(--accent); text-decoration: underline; cursor: pointer; }
+.trow a.link::before { content: "→ "; text-decoration: none; display: inline-block; white-space: pre; }
 
 /* dialogs and toast ---------------------------------------------------- */
 

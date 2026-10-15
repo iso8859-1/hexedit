@@ -203,6 +203,10 @@ impl Parser {
             }
             if self.eat_punct("@") {
                 f.at = Some(self.parse_expr()?);
+                // `uint32_t ofs @ 0x10 -> Chunk;`: placement comes before the link
+                if f.link.is_none() && self.eat_punct("->") {
+                    f.link = Some(self.parse_link(&f, line)?);
+                }
             }
             self.t.instances.push(f);
             if self.eat_punct(",") {
@@ -488,6 +492,7 @@ impl Parser {
                                 bits: None,
                                 endian: self.endian,
                                 at: None,
+                                link: None,
                                 line,
                             });
                         }
@@ -618,7 +623,33 @@ impl Parser {
                 _ => {}
             }
         }
-        Ok(Field { name, ty, type_name, dims, bits, endian: self.endian, at: None, line })
+        let mut f = Field { name, ty, type_name, dims, bits, endian: self.endian, at: None, link: None, line };
+        if is_object && self.eat_punct("->") {
+            f.link = Some(self.parse_link(&f, line)?);
+        }
+        Ok(f)
+    }
+
+    /// Parses `Type [@ expr]` after `->`.
+    fn parse_link(&mut self, f: &Field, line: usize) -> Result<Link> {
+        let err = |m: &str| TemplateError::new(line, 1, m);
+        let integer = match &f.ty {
+            Ty::Prim(p) => p.is_integer() && *p != Prim::Bool,
+            Ty::Enum(_) | Ty::Pointer(_) => true,
+            _ => false,
+        };
+        if !integer || f.bits.is_some() {
+            return Err(err("'->' needs an integer field (no bitfield) holding the target offset"));
+        }
+        let tok = self.tok().clone();
+        let (spec, anon) = self.parse_type_spec()?;
+        let resolvable = self.t.lookup_type(&spec.name).is_some();
+        if anon || !resolvable || matches!(spec.ty, Ty::Void) {
+            return Err(TemplateError::new(tok.line, tok.col, "'->' needs a named type (typedef, struct tag or fixed-size type)"));
+        }
+        self.add_root_name(&spec.name);
+        let at = if self.eat_punct("@") { Some(self.parse_expr()?) } else { None };
+        Ok(Link { type_name: spec.name, at, var: f.name.clone().unwrap_or_default() })
     }
 
     // ------------------------------------------------------------ expressions

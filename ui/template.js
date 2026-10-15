@@ -36,6 +36,11 @@ export class TemplatePanel {
     this.errorLine = null;
     this.seq = 0;
     this.activeRow = null;
+    // where links were followed from, for Back
+    this.history = [];
+    this.backBtn = document.getElementById('tpl-back');
+    // set while the panel itself moves the cursor, so "cursor" mode does not re-apply
+    this.selecting = false;
 
     this.editor.value = load('tpl.source', DEFAULT_SOURCE);
     this.offsetIn.value = load('tpl.offset', '0x0');
@@ -51,6 +56,19 @@ export class TemplatePanel {
     });
     this.editor.addEventListener('scroll', () => { this.gutter.scrollTop = this.editor.scrollTop; });
     this.editor.addEventListener('keydown', (e) => this.onEditorKey(e));
+    this.backBtn.addEventListener('click', () => this.back());
+    document.addEventListener('keydown', (e) => {
+      if (e.altKey && e.key === 'ArrowLeft' && this.history.length) {
+        e.preventDefault();
+        this.back();
+      }
+    });
+    this.tree.addEventListener('mouseup', (e) => {
+      if (e.button === 3 && this.history.length) {
+        e.preventDefault();
+        this.back();
+      }
+    });
     this.rootSel.addEventListener('change', () => {
       this.wantedRoot = this.rootSel.value;
       store('tpl.root', this.wantedRoot);
@@ -75,7 +93,7 @@ export class TemplatePanel {
 
     let followTimer;
     on('cursor', () => {
-      if (!this.follow.checked || !this.auto.checked || this.isInstances()) return;
+      if (this.selecting || !this.follow.checked || !this.auto.checked || this.isInstances()) return;
       clearTimeout(followTimer);
       followTimer = setTimeout(() => this.apply(), 60);
     });
@@ -121,6 +139,8 @@ export class TemplatePanel {
   }
 
   setSource(text) {
+    this.history = [];
+    this.backBtn.disabled = true;
     // keeps the textarea's undo history
     this.editor.focus();
     this.editor.select();
@@ -161,7 +181,51 @@ export class TemplatePanel {
     else if (!applyAfter && this.wantedRoot !== null && values.length) this.apply();
   }
 
-  async apply() {
+  // ------------------------------------------------------------- links
+
+  select(offset, len) {
+    this.selecting = true;
+    try {
+      this.selectRange(offset, len);
+    } finally {
+      this.selecting = false;
+    }
+  }
+
+  setRoot(name) {
+    if (![...this.rootSel.options].some((o) => o.value === name)) this.rootSel.append(new Option(name, name));
+    this.rootSel.value = name;
+  }
+
+  /** Decodes the link's type at its target; the current view goes on the Back stack. */
+  followLink(link) {
+    this.history.push({
+      root: this.rootSel.value,
+      offset: this.offsetIn.value,
+      cursor: state.cursor,
+      expanded: this.expandedPaths(),
+      scroll: this.tree.scrollTop,
+    });
+    this.backBtn.disabled = false;
+    this.setRoot(link.type);
+    this.offsetIn.value = `0x${hex(link.offset, 1)}`;
+    store('tpl.offset', this.offsetIn.value);
+    this.select(link.offset, 0);
+    this.apply({ expanded: new Set(), scroll: 0 });
+  }
+
+  back() {
+    const h = this.history.pop();
+    this.backBtn.disabled = this.history.length === 0;
+    if (!h) return;
+    this.setRoot(h.root);
+    this.offsetIn.value = h.offset;
+    store('tpl.offset', h.offset);
+    this.select(h.cursor, 0);
+    this.apply({ expanded: h.expanded, scroll: h.scroll });
+  }
+
+  async apply(restore = null) {
     if (!this.rootSel.value) {
       this.clear();
       return;
@@ -187,7 +251,7 @@ export class TemplatePanel {
       // remembered so the template is re-applied on the next start
       this.wantedRoot = this.rootSel.value;
       store('tpl.root', this.wantedRoot);
-      this.render(node);
+      this.render(node, restore);
     } catch (e) {
       if (seq !== this.seq) return;
       const m = /^line (\d+):/.exec(String(e));
@@ -205,7 +269,7 @@ export class TemplatePanel {
 
   // ------------------------------------------------------------------ tree
 
-  render(root) {
+  render(root, restore = null) {
     // colour leaves in order, then flatten into non-overlapping ranges for the hex view
     const ranges = [];
     let n = 0;
@@ -237,14 +301,21 @@ export class TemplatePanel {
     state.fieldRanges = flat;
     emit('fields');
 
-    const expanded = this.expandedPaths();
+    const expanded = restore?.expanded ?? this.expandedPaths();
     const head = document.createElement('div');
     head.className = 'trow head';
     head.innerHTML = '<span>Name</span><span>Value</span><span>Type</span><span>Offset</span><span>Size</span>';
     const body = document.createElement('div');
     const top = root.name === 'template' && !root.type ? root.children ?? [] : [root];
     for (const child of top) body.append(this.nodeEl(child, 0, child.name, expanded, true));
+    if (top.length === 1 && top[0] === root && root.size > 0 && root.offset + root.size < state.size) {
+      // single type: page on to the instance that follows it
+      const next = root.offset + root.size;
+      body.append(this.linkRow(`Next ${this.rootSel.value} at 0x${hex(next, 1)}`, 0,
+        { type: this.rootSel.value, offset: next }));
+    }
     this.tree.replaceChildren(head, body);
+    if (restore) this.tree.scrollTop = restore.scroll;
   }
 
   expandedPaths() {
@@ -285,9 +356,23 @@ export class TemplatePanel {
     };
     let value = node.error ? `⚠ ${node.error}` + (node.value ? ` · ${node.value}` : '') : node.value;
     if (node.bits) value += `  [bits ${node.bits[0]}..${node.bits[0] + node.bits[1] - 1}]`;
+    const valueCell = cell('value', value);
+    if (node.link) {
+      // lazy link: the target is decoded only when followed
+      const a = document.createElement('a');
+      a.className = 'link';
+      a.textContent = node.value;
+      a.title = `Decode ${node.link.type} at 0x${hex(node.link.offset, 1)}`;
+      a.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.followLink(node.link);
+      });
+      valueCell.replaceChildren(a);
+      if (node.error) valueCell.prepend(`⚠ ${node.error} · `);
+    }
     row.append(
       name,
-      cell('value', value),
+      valueCell,
       cell('type', node.type),
       cell('off', hex(node.offset, 8)),
       cell('size', String(node.size)),
@@ -301,10 +386,12 @@ export class TemplatePanel {
         kids = document.createElement('div');
         node.children.forEach((c, i) => kids.append(this.nodeEl(c, depth + 1, `${path}/${c.name || i}`, expanded)));
         if (node.more) {
-          const more = document.createElement('div');
-          more.className = 'trow more';
-          more.innerHTML = `<span style="padding-left:${(depth + 1) * 14 + 16}px">… ${node.more} more elements</span>`;
-          kids.append(more);
+          const text = `… ${node.more} more elements`;
+          const last = node.children[node.children.length - 1];
+          // T[n] whose T can be a root: the rest can be decoded one by one
+          const elem = /^([^[]+)\[\d+\]$/.exec(node.type)?.[1];
+          const typed = elem && [...this.rootSel.options].some((o) => o.value === elem);
+          kids.append(this.linkRow(text, depth + 1, typed ? { type: elem, offset: last.offset + last.size } : null));
         }
         wrap.append(kids);
       }
@@ -323,7 +410,7 @@ export class TemplatePanel {
       this.activeRow?.classList.remove('active');
       row.classList.add('active');
       this.activeRow = row;
-      if (node.size > 0) this.selectRange(node.offset, node.size);
+      if (node.size > 0) this.select(node.offset, node.size);
     });
     row.addEventListener('mouseenter', () => {
       state.highlight = node.size > 0 ? { start: node.offset, len: node.size } : null;
@@ -334,6 +421,25 @@ export class TemplatePanel {
       emit('highlight');
     });
     return wrap;
+  }
+
+  linkRow(text, depth, link) {
+    const row = document.createElement('div');
+    row.className = 'trow more';
+    const span = document.createElement('span');
+    span.style.paddingLeft = `${depth * 14 + 16}px`;
+    if (link) {
+      const a = document.createElement('a');
+      a.className = 'link';
+      a.textContent = text;
+      a.title = `Decode ${link.type} at 0x${hex(link.offset, 1)}`;
+      a.addEventListener('click', () => this.followLink(link));
+      span.append(a);
+    } else {
+      span.textContent = text;
+    }
+    row.append(span);
+    return row;
   }
 
   // ------------------------------------------------------------- files

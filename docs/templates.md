@@ -73,8 +73,14 @@ expression:
 uint8_t png_signature[8] @ 22;        // the first image starts right after one entry
 ```
 
-Arrays cannot be indexed in expressions (`entries[0].imageOffset` does not work). For per-element
-data, see [Patterns and recipes](#5-patterns-and-recipes).
+Arrays cannot be indexed in expressions (`entries[0].imageOffset` does not work). To reach the data
+of every entry, make `imageOffset` a link (see [Lazy links](#lazy-links)):
+
+```c
+typedef uint8_t ImageHead[16];          // declare before ICONDIRENTRY
+
+    uint32_t imageOffset -> ImageHead;  // in ICONDIRENTRY: click the value to decode 16 bytes there
+```
 
 **Step 5: save it.** Click **Save** in the template toolbar (or press Ctrl+S inside the editor) and
 store it as `ico.h`. Next time, load it with **Open…**.
@@ -93,6 +99,8 @@ store it as `ico.h`. Next time, load it with **Open…**.
 | **at** | Start offset. Accepts `0x1F0`, `1F0h` or `496`. |
 | **cursor** | Places the root type at the cursor and follows it as you move. Ignored for template declarations. |
 | **auto** | Re-applies while you type and whenever the file changes. |
+| **←** | Back: returns to the view you were in before following a link (also Alt+← or the mouse back button). |
+| Links in the tree | Underlined values (`→ 0x1A40`) are [lazy links](#lazy-links). Clicking one makes its type the Root at the target offset and selects the target in the hex view. |
 
 The Root dropdown lists named structs and unions, enum tags, and typedef names. Primitive types such
 as `uint32_t` are not listed.
@@ -108,6 +116,7 @@ marked with ⚠:
 | `unknown identifier 'x'` | `x` is not an earlier field or a constant (or its value could not be read) |
 | `negative array size -3` | the size expression evaluated to a negative number |
 | `evaluation limit of 1000000 nodes reached` | a size read from garbage data is huge; check the offset |
+| `link target 0x1000 is outside the file` | a link's offset points past the end of the file; it is not clickable |
 
 ---
 
@@ -123,7 +132,7 @@ marked with ⚠:
 | Windows | `BYTE`, `WORD`, `DWORD`, `QWORD`, `CHAR`, `UCHAR`, `SHORT`, `USHORT`, `INT`, `UINT`, `LONG`, `ULONG`, `LONGLONG`, `ULONGLONG`, `BOOL` (4 bytes), `BOOLEAN` (1 byte), `HRESULT`, `WCHAR`, `FLOAT`, `DOUBLE` |
 | Sizes | `size_t`, `uintptr_t` (8 bytes, unsigned), `ssize_t`, `intptr_t`, `ptrdiff_t`, `off_t`, `time_t` (8 bytes, signed) |
 | Text | `char` (code page), `char8_t` (UTF-8), `wchar_t`/`char16_t` (UTF-16), `char32_t` (UTF-32) |
-| Pointers | `T *p;` holds an address of `#pragma ptrsize` bytes (default 8), shown in hex and not followed |
+| Pointers | `T *p;` holds an address of `#pragma ptrsize` bytes (default 8), shown in hex and not followed. For file offsets, use a [lazy link](#lazy-links) |
 
 `long` is 32 bits, as on Windows. Use `long long` or `int64_t` for 64-bit values. `const`, `volatile`
 and `static` are accepted and ignored.
@@ -174,6 +183,7 @@ Expressions appear in array sizes, bitfield widths, `@` placements, enum values 
 | Fields | `count`, or `header.info.count` to reach into nested structs |
 | Constants | `#define` names and enum item names |
 | Sizes | `sizeof(Type)`, `sizeof(Type[4])`, `sizeof(Type *)` |
+| File | `FILE_SIZE`, the length of the file in bytes |
 
 Arithmetic is integer only. A float field used in an expression is truncated. Comparisons return 0 or 1.
 
@@ -182,7 +192,8 @@ Arithmetic is integer only. A float field used in an expression is truncated. Co
 1. fields of the current struct that are already decoded (fields above the current one),
 2. fields of the enclosing structs,
 3. the top-level declarations decoded so far,
-4. constants (`#define` and enum items).
+4. constants (`#define` and enum items),
+5. `FILE_SIZE` (a field or constant of that name takes precedence).
 
 A field can only refer to data before it, never after.
 
@@ -209,6 +220,69 @@ Footer footer;                        // continues right after blob
 
 Without `@`, a declaration starts where the previous one ended. That includes one that was placed with
 `@`. Later declarations can refer to earlier ones by name.
+
+### Lazy links
+
+A link is an integer field that holds the offset of another structure. Write `-> Type` after the
+field's name:
+
+```c
+struct Chunk {
+    uint32_t size;
+    uint32_t next -> Chunk;            // offset of the next chunk
+    uint8_t  data[size];
+};
+```
+
+The field is decoded as usual, so `next` can still be used in expressions. In the tree its value
+becomes a link such as `→ 0x1A40`, and its type reads `uint32_t -> Chunk`. Nothing at the target is
+decoded until you click the link. Clicking it:
+
+1. remembers the current view (Root, offset, expanded rows, scroll position) for **←** Back,
+2. sets Root to `Chunk` and **at** to the target offset,
+3. selects the target in the hex view and decodes `Chunk` there.
+
+This keeps large files fast: a table of 100,000 offsets costs 100,000 integers, not 100,000 decoded
+structures, and you open only the ones you are interested in.
+
+**Rules:**
+
+- The field must be an integer, enum or pointer type, and not a bitfield.
+- The target must be a named type: a typedef name, a struct, union or enum tag, or a fixed-width type
+  such as `uint32_t`. Inline `-> struct { ... }` is not allowed. A struct can link to itself, as in the
+  example above. Use the tag form `struct Chunk { ... }` for that, since a typedef name only exists
+  after its declaration.
+- Link targets are added to the Root dropdown.
+- A value of 0 is shown as `null` and is not a link, since 0 usually means "none".
+- A target past the end of the file is reported as an error and is not clickable.
+- Each element of an array of links is its own link: `uint32_t offsets[count] -> Entry;`.
+
+**Computed targets.** If the stored value is not an absolute file offset, add `@ expression`. In that
+expression, the field's own name stands for its value (the element's value, for arrays). All names
+that are visible to the field can be used too:
+
+```c
+uint32_t nameOfs -> NameEntry @ hdr.stringTable + nameOfs;   // relative to a table
+uint16_t blocks[n] -> Block @ blocks * 512;                  // block numbers
+uint32_t first -> Entry @ first;                             // offset 0 is a valid link here
+```
+
+With `@`, a value of 0 is not treated as null. The tree shows the computed target, followed by
+`(raw N)` when it differs from the stored value.
+
+**Top-level links.** A top-level declaration can be both placed and linked. The placement comes first:
+
+```c
+uint32_t rootOffset @ 0x10 -> Directory;
+```
+
+`uint32_t rootOffset -> Directory @ 0x10;` would instead mean "the link target is 0x10".
+
+**Paging through records.** When a single type is the Root, the tree ends with a
+`→ Next Chunk at 0x…` row that decodes the instance directly after the current one. Arrays that hit
+the 2000-element display cap end with `→ … N more elements`, which decodes the first element that is
+not shown (if the element type can be a Root). With these, you can walk through files with many
+records one structure at a time.
 
 ---
 
@@ -298,6 +372,16 @@ struct Chunk chunk2;
 struct Chunk chunk3;
 ```
 
+**Offset tables and linked lists.** Use [lazy links](#lazy-links). The bundled ZIP example
+decodes the central directory and links each entry to its local file header:
+
+```c
+uint32_t localHeader -> LocalFileHeader @ localHeader;   // "@" keeps offset 0 a link
+
+EndOfCentralDir end @ FILE_SIZE - 22;                    // the end record is the last 22 bytes
+CentralDirEntry dir[end.entries] @ end.dirOffset;
+```
+
 **Decoding at the cursor.** Select a struct type as Root and check **cursor**. The tree then decodes
 wherever you click, which is handy for records scattered through a file.
 
@@ -307,12 +391,15 @@ wherever you click, which is handy for records scattered through a file.
 
 - No loops, `if` blocks or functions. Use the conditional-array patterns above.
 - No "repeat until end of file" arrays. Every array needs a computable size.
-- Array elements cannot be referenced in expressions (`entries[2].offset`).
+- Array elements cannot be referenced in expressions (`entries[2].offset`). To follow per-element
+  offsets, make the element's field a lazy link.
 - No floating-point arithmetic in expressions.
 - Function-like macros, `#if` evaluation and `#include` are not supported (`#include` and `#ifdef` lines
   are ignored).
-- Display caps: the tree shows the first 2000 elements of an array (the rest are counted in its size),
-  strings show up to 512 characters, and evaluation stops after 1,000,000 nodes.
+- Display caps: the tree shows the first 2000 elements of an array (the rest are counted in its size,
+  and the `… N more elements` row continues from there), strings show up to 512 characters, and
+  evaluation stops after 1,000,000 nodes. For very large tables, prefer lazy links over arrays of
+  structs.
 
 ---
 

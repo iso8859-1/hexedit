@@ -10,7 +10,9 @@ A hex editor built with Rust and [Tauri 2](https://tauri.app). It has a data ins
   FILETIME, DOS date/time, OLE date, and GUID. Double-click a numeric value to edit it. Byte order and
   code page are set in the toolbar. "Local" is the system ANSI code page.
 - **Templates**: C declarations decoded into a tree. Fields are color-coded in the hex view, and clicking
-  a tree row selects its bytes. Examples are bundled for BMP, PNG, WAV, PE, and ZIP.
+  a tree row selects its bytes. Lazy links (`uint32_t ofs -> Type;`) show an offset as a link that
+  decodes the target only when clicked, with Back navigation, so large files with many structures stay
+  fast. Examples are bundled for BMP, PNG, WAV, PE, and ZIP.
 
 ## Build and run
 
@@ -51,15 +53,19 @@ typedef struct {
     union { uint32_t u; float f; };   // anonymous members
     uint16_t items[count];    // sizes may reference earlier fields...
     uint8_t  opt[kind == B];  // ...so 0/1-sized arrays act as optional fields
+    uint32_t next -> Header;  // lazy link: decoded only when clicked (0 = null)
+    uint32_t rel -> Header @ rel + 0x200;   // link target computed from the value
 } Header;
 
 Header hdr;                             // top-level declarations: laid out from the start offset
 uint8_t data[hdr.count * 2] @ 0x100;    // @ places at an absolute offset (any expression)
+uint8_t tail[16] @ FILE_SIZE - 16;      // FILE_SIZE is the length of the file
 ```
 
 In the Template tab, choose either **(template declarations)** or a single type as the root. A type is
 placed at the given offset, or at the cursor when **cursor** is checked. With **auto**, the template
-re-applies as you type and whenever the data changes.
+re-applies as you type and whenever the data changes. Clicking a link makes its type the root at the
+target offset; **←** (or Alt+←) returns to the previous view.
 
 Supported: `struct`, `union`, `enum` (with a C++ `: type` base), `typedef`, nested and anonymous
 aggregates, multi-dimensional arrays, bitfields, pointers, and `sizeof(Type)`. Expressions support

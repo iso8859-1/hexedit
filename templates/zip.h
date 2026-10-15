@@ -1,5 +1,7 @@
-// ZIP archive: the first local file headers.
+// ZIP archive: the central directory, with lazy links to each file's local header.
 // Root: "(template declarations)" at offset 0, or "LocalFileHeader" at any "PK\3\4".
+// Click a localHeader value in the tree to decode that file; "←" goes back.
+// Assumes an archive without a trailing comment (the end record is the last 22 bytes).
 #pragma pack(1)
 
 enum Method : uint16_t {
@@ -48,6 +50,42 @@ typedef struct {
     uint8_t      data[compressedSize];
 } LocalFileHeader;
 
-LocalFileHeader file1;
-LocalFileHeader file2;
-LocalFileHeader file3;
+typedef struct {
+    uint32_t     signature;      // 0x02014b50
+    uint16_t     versionMadeBy;
+    uint16_t     versionNeeded;
+    GeneralFlags flags;
+    enum Method  method;
+    DosTime      modTime;
+    DosDate      modDate;
+    uint32_t     crc32;
+    uint32_t     compressedSize;
+    uint32_t     uncompressedSize;
+    uint16_t     nameLength;
+    uint16_t     extraLength;
+    uint16_t     commentLength;
+    uint16_t     diskStart;
+    uint16_t     internalAttributes;
+    uint32_t     externalAttributes;
+    // decoded on click; "@ localHeader" keeps offset 0 a link (plain "->" treats 0 as null)
+    uint32_t     localHeader -> LocalFileHeader @ localHeader;
+    char         name[nameLength];
+    uint8_t      extra[extraLength];
+    char         comment[commentLength];
+} CentralDirEntry;
+
+typedef struct {
+    uint32_t signature;          // 0x06054b50
+    uint16_t disk;
+    uint16_t dirDisk;
+    uint16_t entriesOnDisk;
+    uint16_t entries;
+    uint32_t dirSize;
+    uint32_t dirOffset -> CentralDirEntry;
+    uint16_t commentLength;
+    char     comment[commentLength];
+} EndOfCentralDir;
+
+LocalFileHeader first;
+EndOfCentralDir end @ FILE_SIZE - 22;
+CentralDirEntry dir[end.entries] @ end.dirOffset;

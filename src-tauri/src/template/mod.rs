@@ -154,7 +154,21 @@ pub struct Field {
     pub endian: Option<Endian>,
     /// absolute placement (`@ expr`), top-level declarations only
     pub at: Option<Expr>,
+    /// `-> Type [@ expr]`: the value is an offset to an instance of `Type`
+    pub link: Option<Link>,
     pub line: usize,
+}
+
+/// A lazy link: the target is only decoded when the user follows it.
+#[derive(Debug, Clone)]
+pub struct Link {
+    /// a name `Template::lookup_type` resolves
+    pub type_name: String,
+    /// target offset; the field's name refers to the (element) value here.
+    /// Without it, the value itself is the target offset.
+    pub at: Option<Expr>,
+    /// the field name, bound to the element value while evaluating `at`
+    pub var: String,
 }
 
 #[derive(Debug, Clone)]

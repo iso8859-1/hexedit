@@ -31,6 +31,16 @@ pub struct Node {
     pub more: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// lazy link: decoded only when the user follows it
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<NodeLink>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeLink {
+    pub offset: u64,
+    #[serde(rename = "type")]
+    pub ty: String,
 }
 
 fn is_zero(v: &u64) -> bool {
@@ -49,6 +59,7 @@ impl Node {
             children: vec![],
             more: 0,
             error: None,
+            link: None,
         }
     }
 
@@ -83,7 +94,7 @@ pub fn apply(t: &Template, data: &[u8], root: Root, base: u64, opts: &Options) -
     match root {
         Root::Type(name) => {
             let ts = t.lookup_type(&name).ok_or_else(|| format!("unknown type '{name}'"))?;
-            let (node, _) = ev.eval_decl(&name, &ts.ty, &ts.name, &ts.dims, None, base)?;
+            let (node, _) = ev.eval_decl(&name, &ts.ty, &ts.name, &ts.dims, None, None, base)?;
             Ok(node)
         }
         Root::Instances => {
@@ -207,6 +218,12 @@ impl<'a> Ev<'a> {
                     if let Some(c) = self.t.consts.get(first) {
                         return Ok(*c);
                     }
+                    if first == "FILE_SIZE" {
+                        if self.static_mode {
+                            return Err("FILE_SIZE depends on file data".into());
+                        }
+                        return Ok(self.data.len() as i128);
+                    }
                 }
                 return Err(format!("unknown identifier '{first}'"));
             }
@@ -304,10 +321,11 @@ impl<'a> Ev<'a> {
 
     fn eval_field(&mut self, f: &Field, offset: u64) -> Result<(Node, Option<Val>), String> {
         let name = f.name.clone().unwrap_or_default();
-        self.eval_decl(&name, &f.ty, &f.type_name, &f.dims, f.endian, offset)
+        self.eval_decl(&name, &f.ty, &f.type_name, &f.dims, f.endian, f.link.as_ref(), offset)
             .map_err(|e| format!("{e} (line {})", f.line))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn eval_decl(
         &mut self,
         name: &str,
@@ -315,6 +333,7 @@ impl<'a> Ev<'a> {
         tn: &str,
         dims: &[Expr],
         endian: Option<Endian>,
+        link: Option<&Link>,
         offset: u64,
     ) -> Result<(Node, Option<Val>), String> {
         let mut counts = Vec::with_capacity(dims.len());
@@ -325,9 +344,10 @@ impl<'a> Ev<'a> {
             }
             counts.push(n.min(u64::MAX as i128) as u64);
         }
-        self.eval_dims(name, ty, tn, &counts, endian.unwrap_or(self.endian), offset)
+        self.eval_dims(name, ty, tn, &counts, endian.unwrap_or(self.endian), link, offset)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn eval_dims(
         &mut self,
         name: &str,
@@ -335,10 +355,17 @@ impl<'a> Ev<'a> {
         tn: &str,
         counts: &[u64],
         endian: Endian,
+        link: Option<&Link>,
         offset: u64,
     ) -> Result<(Node, Option<Val>), String> {
         let Some((&n, rest)) = counts.split_first() else {
-            return self.eval_single(name, ty, tn, endian, offset);
+            let (mut node, val) = self.eval_single(name, ty, tn, endian, offset)?;
+            if let (Some(l), Some(Val::Int(v))) = (link, &val) {
+                if !self.static_mode {
+                    self.attach_link(&mut node, l, *v);
+                }
+            }
+            return Ok((node, val));
         };
         self.tick()?;
         let full_tn: String = format!("{tn}{}", counts.iter().map(|c| format!("[{c}]")).collect::<String>());
@@ -349,7 +376,7 @@ impl<'a> Ev<'a> {
             return Ok((Node::new(name, &full_tn, offset, es.saturating_mul(n), String::new()), None));
         }
 
-        if rest.is_empty() {
+        if rest.is_empty() && link.is_none() {
             if let Ty::Prim(p @ (Prim::Char | Prim::Char8 | Prim::Char16 | Prim::Char32)) = ty {
                 return Ok((self.string_node(name, &full_tn, *p, n, endian, offset), None));
             }
@@ -364,11 +391,11 @@ impl<'a> Ev<'a> {
                     cur = cur.saturating_add(es.saturating_mul(n - i));
                     break;
                 }
-                let (node, _) = self.eval_dims("", ty, tn, rest, endian, cur)?;
+                let (node, _) = self.eval_dims("", ty, tn, rest, endian, link, cur)?;
                 cur = cur.saturating_add(node.size);
                 continue;
             }
-            let (node, _) = self.eval_dims(&format!("[{i}]"), ty, tn, rest, endian, cur)?;
+            let (node, _) = self.eval_dims(&format!("[{i}]"), ty, tn, rest, endian, link, cur)?;
             cur = cur.saturating_add(node.size);
             children.push(node);
         }
@@ -393,6 +420,41 @@ impl<'a> Ev<'a> {
             node.error = Some("extends beyond end of data".into());
         }
         Ok((node, None))
+    }
+
+    /// Turns an offset field into a link; the target itself is not decoded.
+    fn attach_link(&mut self, node: &mut Node, l: &Link, v: i128) {
+        node.ty = format!("{} -> {}", node.ty, l.type_name);
+        if v == 0 && l.at.is_none() {
+            node.value = "null".into();
+            return;
+        }
+        let target = match &l.at {
+            None => Ok(v),
+            Some(e) => {
+                self.scopes.push(HashMap::from([(l.var.clone(), Val::Int(v))]));
+                let r = self.eval_expr(e);
+                self.scopes.pop();
+                r
+            }
+        };
+        let raw = match target {
+            Ok(t) if t != v => format!(" (raw {v})"),
+            _ => String::new(),
+        };
+        match target {
+            Ok(t) if t >= 0 && (t as u128) < self.data.len() as u128 => {
+                node.value = format!("0x{t:X}{raw}");
+                node.link = Some(NodeLink { offset: t as u64, ty: l.type_name.clone() });
+            }
+            Ok(t) => {
+                node.value = if t < 0 { format!("{t}{raw}") } else { format!("0x{t:X}{raw}") };
+                node.error.get_or_insert_with(|| if t < 0 { format!("link target {t} is outside the file") } else { format!("link target 0x{t:X} is outside the file") });
+            }
+            Err(e) => {
+                node.error.get_or_insert_with(|| format!("link target: {e}"));
+            }
+        }
     }
 
     fn eval_single(
@@ -853,6 +915,49 @@ mod tests {
         assert_eq!(child(child(&n, "modTime"), "hour").value, "11 (0xB)");
         assert_eq!(child(child(&n, "modDate"), "year1980").value, "44 (0x2C)");
         assert_eq!(n.size, d.len() as u64);
+    }
+
+    #[test]
+    fn lazy_links() {
+        let src = "#pragma pack(1)\n\
+                   struct Node { uint32_t value; uint32_t next -> Node; };\n\
+                   typedef struct { uint16_t n; uint16_t offs[n] -> Node @ offs * 4; } Table;\n\
+                   Table tbl;\n\
+                   uint32_t first @ 2 -> struct Node;";
+        // tbl: n = 2, offs = [2, 0] -> targets 8 and 0; first (at 2) is 2 -> 2
+        let mut d = vec![2, 0, 2, 0, 0, 0, 0, 0];
+        d.extend(7u32.to_le_bytes());
+        d.extend(0u32.to_le_bytes());
+        let n = run(src, "", &d);
+        let offs = child(child(&n, "tbl"), "offs");
+        let l = offs.children[0].link.as_ref().unwrap();
+        assert_eq!((l.offset, l.ty.as_str()), (8, "Node"));
+        assert_eq!(offs.children[0].value, "0x8 (raw 2)");
+        assert_eq!(offs.children[0].ty, "uint16_t -> Node");
+        // with '@' a zero value is a regular offset
+        assert_eq!(offs.children[1].link.as_ref().unwrap().offset, 0);
+        let first = child(&n, "first");
+        assert_eq!((first.offset, first.link.as_ref().unwrap().offset), (2, 2));
+        // nothing behind the link is decoded; a zero offset is null
+        let node = run(src, "Node", &d[8..]);
+        assert_eq!(child(&node, "next").value, "null");
+        assert!(child(&node, "next").link.is_none());
+        // following the link decodes the type at the target
+        let t = parse(src).unwrap();
+        let opts = Options { endian: Endian::Little, encoding: encoding_rs::WINDOWS_1252 };
+        let tgt = apply(&t, &d, Root::Type(l.ty.clone()), l.offset, &opts).unwrap();
+        assert!(child(&tgt, "value").value.starts_with("7 "));
+        // targets outside the file are errors, not links
+        let n = run(src, "Node", &[0, 0, 0, 0, 0xFF, 0, 0, 0]);
+        assert!(child(&n, "next").link.is_none() && child(&n, "next").error.is_some());
+
+        assert!(parse("struct A { float f -> A; };").is_err());
+        assert!(parse("struct A { uint8_t b : 4 -> A; };").is_err());
+        assert!(parse("struct A { uint32_t o -> struct { int x; }; };").is_err());
+        assert!(t.root_names.iter().any(|r| r == "Node"));
+        let n = run("uint8_t tail[2] @ FILE_SIZE - 2;", "", &d);
+        assert_eq!(child(&n, "tail").offset, d.len() as u64 - 2);
+        assert!(parse("struct A { uint8_t x[FILE_SIZE]; };").unwrap().structs[0].static_size.is_none());
     }
 
     #[test]

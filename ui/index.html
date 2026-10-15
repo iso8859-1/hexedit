@@ -92,6 +92,7 @@
         </div>
         <div id="tpl-hsplit" title="Drag to resize"></div>
         <div class="tpl-apply">
+          <button id="tpl-back" class="icon" title="Back to where the last link was followed (Alt+←)" aria-label="Back" disabled>←</button>
           <label>Root <select id="tpl-root"></select></label>
           <label>at <input id="tpl-offset" type="text" value="0x0" spellcheck="false"></label>
           <label class="check" title="Place the root type at the cursor"><input id="tpl-follow" type="checkbox"> cursor</label>
@@ -145,15 +146,20 @@ typedef struct {
     union { uint32_t u; float f; };  // anonymous members
     uint16_t items[count];   // sizes may use earlier fields
     uint8_t  pad[count &amp; 1 ? 1 : 0];   // 0/1-sized arrays act as optional fields
+    uint32_t next -&gt; Header;   // lazy link: click the offset to decode a Header there
+    uint32_t rel  -&gt; Header @ rel + 0x200;   // target computed from the value
 } Header;
 
 Header hdr;                          // placed at the start offset
-uint8_t data[hdr.count * 2] @ 0x100; // @ places at an absolute offset</pre>
+uint8_t data[hdr.count * 2] @ 0x100; // @ places at an absolute offset
+uint8_t tail[16] @ FILE_SIZE - 16;   // FILE_SIZE: length of the file</pre>
     <p>Types: <code>char, short, int, long (32 bit), long long, float, double, bool</code> with
       <code>signed/unsigned</code>, <code>int8_t … uint64_t</code>, <code>BYTE WORD DWORD QWORD</code>,
       <code>u8 … u64, s8 … s64, f32, f64</code>, pointers. Expressions support
       <code>+ - * / % &lt;&lt; &gt;&gt; &amp; | ^ ~ ! == != &lt; &gt; &amp;&amp; || ?:</code>,
       <code>sizeof(Type)</code> and <code>hdr.field</code> paths.</p>
+    <p>Links (<code>-&gt;</code>) are not decoded until clicked. Following one makes the target type the
+      root; <b>←</b> or Alt+← goes back. A link whose value is 0 is shown as <code>null</code>.</p>
     <form method="dialog"><div class="buttons"><button class="primary">Close</button></div></form>
   </dialog>
 
