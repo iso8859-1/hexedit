@@ -6,7 +6,7 @@ export const api = {
   docInfo: () => invoke('doc_info'),
   openFile: (path = null) => invoke('open_file', { path }),
   newFile: () => invoke('new_file'),
-  saveFile: (saveAs) => invoke('save_file', { saveAs }),
+  saveFile: (saveAs, backup) => invoke('save_file', { saveAs, backup }),
   readBytes: async (offset, len) => new Uint8Array(await invoke('read_bytes', { offset, len })),
   writeBytes: (offset, bytes, insert, coalesce) =>
     invoke('write_bytes', { offset, bytes: Array.from(bytes), insert, coalesce }),

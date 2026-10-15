@@ -32,6 +32,15 @@ pub struct Document {
     next_id: u64,
     /// id of the top undo entry when last saved
     saved_id: Option<u64>,
+    /// files already backed up in this session; later saves keep the first backup
+    backed_up: Vec<PathBuf>,
+}
+
+/// `file.ext` -> `file.ext.bak`
+pub fn backup_path(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_owned();
+    s.push(".bak");
+    PathBuf::from(s)
 }
 
 impl Document {
@@ -60,7 +69,9 @@ impl Document {
         !self.redo.is_empty()
     }
 
-    pub fn save_to(&mut self, path: &Path) -> std::io::Result<()> {
+    /// Saves to `path`. With `backup`, the first save over an existing file in
+    /// this session keeps its previous content as `<path>.bak` (returned).
+    pub fn save_to(&mut self, path: &Path, backup: bool) -> std::io::Result<Option<PathBuf>> {
         // write next to the target and rename, so a failed write never truncates the file
         let tmp = path.with_extension(format!(
             "{}.hexedit-tmp",
@@ -71,13 +82,30 @@ impl Document {
             f.write_all(&self.data)?;
             f.sync_all()?;
         }
+        let bak = if backup && path.is_file() && !self.backed_up.iter().any(|p| p == path) {
+            // the original moves aside instead of being copied: instant, even for large files
+            let bak = backup_path(path);
+            if let Err(e) = fs::rename(path, &bak) {
+                let _ = fs::remove_file(&tmp);
+                return Err(std::io::Error::new(e.kind(), format!("cannot create backup {}: {e}", bak.display())));
+            }
+            Some(bak)
+        } else {
+            None
+        };
         if let Err(e) = fs::rename(&tmp, path) {
+            if let Some(b) = &bak {
+                let _ = fs::rename(b, path);
+            }
             let _ = fs::remove_file(&tmp);
             return Err(e);
         }
+        if bak.is_some() {
+            self.backed_up.push(path.to_path_buf());
+        }
         self.path = Some(path.to_path_buf());
         self.saved_id = self.undo.last().map(|e| e.id);
-        Ok(())
+        Ok(bak)
     }
 
     /// Writes `bytes` at `off`. In overwrite mode the part past the end of the
@@ -258,6 +286,39 @@ mod tests {
         d.redo();
         assert_eq!(d.data, [1, 9, 9, 4]);
         assert!(d.dirty());
+    }
+
+    #[test]
+    fn save_with_backup() {
+        let dir = std::env::temp_dir().join(format!("hexedit-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("f.bin");
+        let bak = backup_path(&path);
+        assert_eq!(bak.file_name().unwrap(), "f.bin.bak");
+        fs::write(&path, [1, 2, 3]).unwrap();
+        let _ = fs::remove_file(&bak);
+
+        let mut d = Document::open(&path).unwrap();
+        d.write(0, &[9], false, false).unwrap();
+        assert_eq!(d.save_to(&path, true).unwrap(), Some(bak.clone()));
+        assert_eq!(fs::read(&path).unwrap(), [9, 2, 3]);
+        assert_eq!(fs::read(&bak).unwrap(), [1, 2, 3]);
+        // the backup keeps the original, not the previous save
+        d.write(1, &[8], false, false).unwrap();
+        assert_eq!(d.save_to(&path, true).unwrap(), None);
+        assert_eq!(fs::read(&path).unwrap(), [9, 8, 3]);
+        assert_eq!(fs::read(&bak).unwrap(), [1, 2, 3]);
+        // without the option no backup is made
+        let other = dir.join("g.bin");
+        fs::write(&other, [0]).unwrap();
+        let _ = fs::remove_file(backup_path(&other));
+        assert_eq!(d.save_to(&other, false).unwrap(), None);
+        assert!(!backup_path(&other).exists());
+        // new files have nothing to back up
+        let fresh = dir.join("new.bin");
+        let _ = fs::remove_file(&fresh);
+        assert_eq!(d.save_to(&fresh, true).unwrap(), None);
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

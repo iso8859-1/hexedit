@@ -81,10 +81,11 @@ async function newFile() {
 async function saveFile(saveAs) {
   await queue;
   try {
-    const info = await api.saveFile(saveAs);
-    if (info) {
-      setInfo(info);
-      toast(`Saved ${info.path}`);
+    const r = await api.saveFile(saveAs, $('opt-backup').checked);
+    if (r) {
+      setInfo(r.info);
+      const backup = r.backup ? ` (original kept as ${r.backup.split(/[\\/]/).pop()})` : '';
+      toast(`Saved ${r.info.path}${backup}`);
     }
   } catch (e) {
     toast(String(e), true);
@@ -444,6 +445,12 @@ async function setTheme(choice) {
   document.documentElement.dataset.theme = theme;
 }
 
+function initBackup() {
+  const box = $('opt-backup');
+  box.checked = load('ui.backup', false);
+  box.addEventListener('change', () => store('ui.backup', box.checked));
+}
+
 function initTheme() {
   const sel = $('sel-theme');
   sel.value = load('ui.theme', 'system');
@@ -494,6 +501,7 @@ function initTabs() {
 
 async function main() {
   initTheme();
+  initBackup();
   await initSettings();
   view = new HexView();
   setInfo(await api.docInfo());

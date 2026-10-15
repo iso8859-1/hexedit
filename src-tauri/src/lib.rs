@@ -112,8 +112,20 @@ async fn new_file(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Optio
     Ok(Some(info(&app, &cur)))
 }
 
+#[derive(Serialize)]
+struct SaveResult {
+    info: DocInfo,
+    /// backup created by this save
+    backup: Option<String>,
+}
+
 #[tauri::command]
-async fn save_file(app: AppHandle, state: State<'_, AppState>, save_as: bool) -> CmdResult<Option<DocInfo>> {
+async fn save_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    save_as: bool,
+    backup: bool,
+) -> CmdResult<Option<SaveResult>> {
     let (existing, name) = {
         let doc = state.doc.lock().unwrap();
         (doc.path.clone(), doc.name())
@@ -126,8 +138,8 @@ async fn save_file(app: AppHandle, state: State<'_, AppState>, save_as: bool) ->
         },
     };
     let mut doc = state.doc.lock().unwrap();
-    doc.save_to(&path).map_err(|e| format!("Cannot save {}: {e}", path.display()))?;
-    Ok(Some(info(&app, &doc)))
+    let bak = doc.save_to(&path, backup).map_err(|e| format!("Cannot save {}: {e}", path.display()))?;
+    Ok(Some(SaveResult { info: info(&app, &doc), backup: bak.map(|b| b.display().to_string()) }))
 }
 
 #[tauri::command]

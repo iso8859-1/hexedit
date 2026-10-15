@@ -94,5 +94,8 @@ templates/         example templates, embedded into the binary
 
 - Files are loaded completely into memory, so very large files need matching RAM.
 - Saving writes a temporary file next to the target and renames it over the original.
+- With **Backup** checked (toolbar, next to Save as), the first save over an existing file in a session
+  keeps its original content as `<name>.bak`, e.g. `data.bin.bak`. Later saves in the same session leave
+  that backup alone, so it always holds the file as it was before HexEdit changed it.
 - For UI debugging on Windows, start the app with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`
   and attach Chrome/Edge DevTools to `localhost:9333`.
