@@ -2,6 +2,8 @@
 name = "hexedit"
 version = "0.1.0"
 description = "Hex editor with data inspector and C-struct templates"
+license = "MIT"
+repository = "https://github.com/iso8859-1/hexedit"
 edition = "2021"
 
 [lib]

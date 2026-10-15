@@ -175,3 +175,7 @@ themes/            standard themes (Light, Dark, Solarized Dark), installed into
   that backup alone, so it always holds the file as it was before HexEdit changed it.
 - For UI debugging on Windows, start the app with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`
   and attach Chrome/Edge DevTools to `localhost:9333`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
