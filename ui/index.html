@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HexEdit</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="toolbar">
+    <div class="group">
+      <button id="btn-new" title="New (Ctrl+N)">New</button>
+      <button id="btn-open" title="Open (Ctrl+O)">Open</button>
+      <button id="btn-save" title="Save (Ctrl+S)">Save</button>
+      <button id="btn-saveas" title="Save as (Ctrl+Shift+S)">Save as</button>
+    </div>
+    <div class="group">
+      <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="btn-redo" title="Redo (Ctrl+Y)">Redo</button>
+    </div>
+    <div class="group">
+      <button id="btn-goto" title="Go to offset (Ctrl+G)">Go to</button>
+      <button id="btn-find" title="Find (Ctrl+F)">Find</button>
+    </div>
+    <div class="spacer"></div>
+    <label>Bytes/row
+      <select id="sel-bpr">
+        <option>8</option><option selected>16</option><option>24</option><option>32</option>
+      </select>
+    </label>
+    <label>Byte order
+      <select id="sel-endian">
+        <option value="le">Little endian</option>
+        <option value="be">Big endian</option>
+      </select>
+    </label>
+    <label>Code page
+      <select id="sel-encoding"></select>
+    </label>
+  </header>
+
+  <div id="findbar" class="findbar" hidden>
+    <select id="find-mode">
+      <option value="hex">Hex bytes</option>
+      <option value="text">Text (code page)</option>
+      <option value="utf8">Text (UTF-8)</option>
+      <option value="utf16">Text (UTF-16)</option>
+    </select>
+    <input id="find-input" type="text" spellcheck="false" placeholder="e.g. 4D 5A or text">
+    <button id="find-prev" title="Find previous (Shift+F3)">Previous</button>
+    <button id="find-next" title="Find next (F3)">Next</button>
+    <span id="find-msg" class="muted"></span>
+    <div class="spacer"></div>
+    <button id="find-close" class="icon" title="Close (Esc)" aria-label="Close find bar">✕</button>
+  </div>
+
+  <main>
+    <section id="hexview" tabindex="0" aria-label="Hex view">
+      <div id="hex-header" class="hexrow header"></div>
+      <div id="hex-rows"></div>
+      <div id="hex-empty" class="empty" hidden>
+        <p>Open a file (Ctrl+O), drop one here, or just start typing.</p>
+      </div>
+      <div id="vscroll"><div id="vscroll-inner"></div></div>
+    </section>
+
+    <div id="splitter" title="Drag to resize"></div>
+
+    <aside id="side">
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="inspector" class="active">Data inspector</button>
+        <button role="tab" data-tab="template">Template</button>
+      </nav>
+
+      <div id="tab-inspector" class="tabpanel">
+        <div id="inspector-head" class="muted"></div>
+        <table id="inspector"><tbody></tbody></table>
+        <p class="hint muted">Double-click a numeric value to edit it.</p>
+      </div>
+
+      <div id="tab-template" class="tabpanel" hidden>
+        <div class="tpl-toolbar">
+          <button id="tpl-open">Open…</button>
+          <button id="tpl-save">Save</button>
+          <button id="tpl-saveas">Save as…</button>
+          <select id="tpl-examples"><option value="">Examples…</option></select>
+          <button id="tpl-help" class="icon" title="Template syntax" aria-label="Template syntax">?</button>
+        </div>
+        <div id="tpl-editor-wrap">
+          <pre id="tpl-gutter" aria-hidden="true"></pre>
+          <textarea id="tpl-editor" spellcheck="false" wrap="off"></textarea>
+        </div>
+        <div id="tpl-hsplit" title="Drag to resize"></div>
+        <div class="tpl-apply">
+          <label>Root <select id="tpl-root"></select></label>
+          <label>at <input id="tpl-offset" type="text" value="0x0" spellcheck="false"></label>
+          <label class="check" title="Place the root type at the cursor"><input id="tpl-follow" type="checkbox"> cursor</label>
+          <label class="check" title="Re-apply on every change"><input id="tpl-auto" type="checkbox" checked> auto</label>
+          <button id="tpl-apply" class="primary" title="Apply (Ctrl+Enter)">Apply</button>
+        </div>
+        <div id="tpl-error" class="error" hidden></div>
+        <div id="tpl-tree" role="tree"></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="status">
+    <span id="st-file"></span>
+    <span id="st-offset"></span>
+    <span id="st-sel"></span>
+    <span id="st-size"></span>
+    <div class="spacer"></div>
+    <span id="st-mode" title="Insert key toggles insert/overwrite"></span>
+  </footer>
+
+  <dialog id="goto-dialog">
+    <form method="dialog">
+      <label>Go to offset
+        <input id="goto-input" type="text" spellcheck="false" placeholder="0x1F0, 496, +16, -0x10">
+      </label>
+      <div class="buttons">
+        <button value="cancel" formnovalidate>Cancel</button>
+        <button value="ok" class="primary">Go</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="help-dialog" class="help">
+    <h2>Template syntax</h2>
+    <p>Templates are C declarations. Pick a struct type as root to place it at an offset, or use the
+      template's top-level declarations, which are laid out one after another from the start offset.</p>
+<pre>#pragma pack(1)            // also pack(push, n), pack(pop); default is natural C alignment
+#pragma endian big         // big | little | default (toolbar setting); applies to following fields
+#pragma ptrsize 4          // pointer size, default 8
+#define COUNT 4
+
+enum Kind : uint16_t { A = 1, B, C = 0x10 };
+
+typedef struct {
+    char     magic[4];       // char arrays show as text in the selected code page
+    wchar_t  title[8];       // wchar_t / char16_t arrays: UTF-16, char8_t: UTF-8
+    uint32_t count;
+    enum Kind kind;
+    uint8_t  flag : 1, mode : 3;   // bitfields
+    union { uint32_t u; float f; };  // anonymous members
+    uint16_t items[count];   // sizes may use earlier fields
+    uint8_t  pad[count &amp; 1 ? 1 : 0];   // 0/1-sized arrays act as optional fields
+} Header;
+
+Header hdr;                          // placed at the start offset
+uint8_t data[hdr.count * 2] @ 0x100; // @ places at an absolute offset</pre>
+    <p>Types: <code>char, short, int, long (32 bit), long long, float, double, bool</code> with
+      <code>signed/unsigned</code>, <code>int8_t … uint64_t</code>, <code>BYTE WORD DWORD QWORD</code>,
+      <code>u8 … u64, s8 … s64, f32, f64</code>, pointers. Expressions support
+      <code>+ - * / % &lt;&lt; &gt;&gt; &amp; | ^ ~ ! == != &lt; &gt; &amp;&amp; || ?:</code>,
+      <code>sizeof(Type)</code> and <code>hdr.field</code> paths.</p>
+    <form method="dialog"><div class="buttons"><button class="primary">Close</button></div></form>
+  </dialog>
+
+  <div id="toast" role="status" hidden></div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
