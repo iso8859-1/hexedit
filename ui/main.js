@@ -433,16 +433,60 @@ async function initSettings() {
   });
 }
 
-// System follows Windows; the native title bar is switched along with the page.
+// Themes: the built-in Light/Dark palettes in style.css, plus TOML files from the
+// themes folder that set a base palette and override some of its colors.
+// "System" uses the themes named Light and Dark, following Windows.
 const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+const THEME_RELOAD = '\u0000reload';
+const THEME_FOLDER = '\u0000folder';
+const themes = { list: [], choice: 'system' };
 
-async function setTheme(choice) {
-  store('ui.theme', choice);
+function findTheme(name) {
+  return themes.list.find((t) => t.name.toLowerCase() === name.toLowerCase());
+}
+
+async function applyTheme() {
+  const chosen = themes.choice === 'system' ? null : findTheme(themes.choice);
   const win = window.__TAURI__?.window?.getCurrentWindow();
   // reset the window first: a forced window theme also changes what darkQuery reports
-  try { await win?.setTheme(choice === 'system' ? null : choice); } catch { /* not permitted */ }
-  const theme = choice === 'system' ? (darkQuery.matches ? 'dark' : 'light') : choice;
-  document.documentElement.dataset.theme = theme;
+  try { await win?.setTheme(chosen ? chosen.base : null); } catch { /* not permitted */ }
+  const osBase = darkQuery.matches ? 'dark' : 'light';
+  const theme = chosen ?? findTheme(osBase) ?? { base: osBase, colors: {} };
+  const root = document.documentElement;
+  for (const p of [...root.style]) if (p.startsWith('--')) root.style.removeProperty(p);
+  root.dataset.theme = theme.base;
+  for (const [k, v] of Object.entries(theme.colors)) root.style.setProperty(`--${k}`, v);
+  // for the first paint of the next start (see index.html)
+  store('ui.themeApplied', { base: theme.base, colors: theme.colors });
+}
+
+function fillThemeMenu() {
+  const sel = $('sel-theme');
+  sel.replaceChildren(new Option('System', 'system'));
+  for (const t of themes.list) {
+    const o = new Option(t.name, t.name);
+    o.title = t.file ? `${t.file} (based on ${t.base})` : `built-in`;
+    sel.append(o);
+  }
+  const actions = document.createElement('optgroup');
+  actions.label = '──────────';
+  actions.append(new Option('Reload themes', THEME_RELOAD), new Option('Open themes folder…', THEME_FOLDER));
+  sel.append(actions);
+  // a theme whose file is gone shows as System, but stays chosen in case it comes back
+  sel.value = findTheme(themes.choice)?.name ?? 'system';
+}
+
+async function loadThemes(report) {
+  try {
+    const r = await api.themeList();
+    themes.list = r.themes;
+    if (r.warnings.length) toast(`Themes: ${r.warnings.join(' · ')}`, true);
+    else if (report) toast(`Loaded ${r.themes.filter((t) => t.file).length} theme file(s) from ${r.dir}`);
+  } catch (e) {
+    toast(String(e), true);
+  }
+  fillThemeMenu();
+  await applyTheme();
 }
 
 function initBackup() {
@@ -453,11 +497,24 @@ function initBackup() {
 
 function initTheme() {
   const sel = $('sel-theme');
-  sel.value = load('ui.theme', 'system');
-  if (!sel.value) sel.value = 'system';
-  sel.addEventListener('change', () => setTheme(sel.value));
-  darkQuery.addEventListener('change', () => { if (sel.value === 'system') setTheme('system'); });
-  setTheme(sel.value);
+  themes.choice = load('ui.theme', 'system') || 'system';
+  let shown = sel.value;
+  sel.addEventListener('focus', () => { shown = sel.value; });
+  sel.addEventListener('change', async () => {
+    if (sel.value === THEME_RELOAD || sel.value === THEME_FOLDER) {
+      const action = sel.value;
+      sel.value = shown;
+      if (action === THEME_RELOAD) await loadThemes(true);
+      else api.themeOpenFolder().catch((e) => toast(String(e), true));
+      return;
+    }
+    shown = sel.value;
+    themes.choice = sel.value;
+    store('ui.theme', themes.choice);
+    applyTheme();
+  });
+  darkQuery.addEventListener('change', () => { if (themes.choice === 'system') applyTheme(); });
+  loadThemes(false);
 }
 
 function initSplitter() {

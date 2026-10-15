@@ -1,0 +1,39 @@
+# HexEdit theme. Files in this folder (*.toml) appear in the Theme menu in the toolbar.
+# Edit a file, then pick "Reload themes" in that menu to see the change.
+#
+# name: shown in the menu. A theme named "Light" or "Dark" replaces that built-in theme,
+#       which also changes what "System" uses. Defaults to the file name.
+# base: "light" or "dark". Colors left out below come from that built-in theme, and it sets
+#       the title bar and native controls (scrollbars, checkboxes).
+#
+# Colors are CSS colors: "#rgb", "#rrggbb", "#rrggbbaa", "rgb(...)", "hsl(...)", or a name like "tomato".
+# Every key is optional.
+
+name = "Solarized Dark"
+base = "dark"
+
+[colors]
+bg         = "#002b36"   # main background: hex view, editor, inputs
+bg-alt     = "#073642"   # buttons, selects, hovered rows
+bg-panel   = "#04313d"   # toolbar, side panel, status bar, tree header, dialogs
+fg         = "#93a1a1"   # main text
+muted      = "#839496"   # secondary text: labels, tree types/offsets/sizes
+faint      = "#4f6b74"   # de-emphasized text: past-the-end bytes, unavailable inspector values
+border     = "#0e4b5a"   # borders and separators
+accent     = "#268bd2"   # primary button, active tab, focus ring, links, splitter hover
+accent-fg  = "#fdf6e3"   # text on the accent color
+sel        = "#0d4d6d"   # selected bytes, selected tree row
+sel-strong = "#1a6086"   # cursor byte in the focused hex view
+cursor     = "#4aa3e0"   # cursor outline (filled in insert mode)
+hl         = "#3d4a1f"   # bytes of the hovered inspector value / tree row
+error      = "#dc322f"   # error text
+error-bg   = "#3b2a30"   # background of template error messages
+offset     = "#586e75"   # offset column and header of the hex view
+zero       = "#46616a"   # 00 bytes and non-printable characters
+# template field colors, cycled through the decoded fields (backgrounds in the hex view)
+f0         = "#1b412b"
+f1         = "#083e55"
+f2         = "#293130"
+f3         = "#163952"
+f4         = "#08434a"
+f5         = "#2a2d45"

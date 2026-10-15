@@ -6,12 +6,17 @@
   <title>HexEdit</title>
   <link rel="stylesheet" href="style.css">
   <script>
-    // pick the theme before the first paint, so a dark start does not flash white
+    // re-apply the last theme before the first paint, so a dark start does not flash white;
+    // main.js loads the theme files and applies the current version afterwards
     (() => {
-      let t = 'system';
-      try { t = JSON.parse(localStorage.getItem('ui.theme')) ?? 'system'; } catch { /* default */ }
-      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      document.documentElement.dataset.theme = t;
+      const get = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+      const osBase = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      const last = get('ui.themeApplied');
+      // with "System", last session's colors only fit if Windows is still in the same mode
+      const fits = last && (get('ui.theme') !== 'system' || last.base === osBase);
+      const root = document.documentElement;
+      root.dataset.theme = fits ? last.base : osBase;
+      if (fits) for (const [k, v] of Object.entries(last.colors ?? {})) root.style.setProperty(`--${k}`, v);
     })();
   </script>
 </head>
@@ -49,11 +54,7 @@
       <select id="sel-encoding"></select>
     </label>
     <label>Theme
-      <select id="sel-theme">
-        <option value="system">System</option>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-      </select>
+      <select id="sel-theme"><option value="system">System</option></select>
     </label>
   </header>
 

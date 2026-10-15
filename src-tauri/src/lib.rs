@@ -2,6 +2,7 @@ mod document;
 mod encodings;
 mod inspector;
 pub mod template;
+mod themes;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -355,6 +356,39 @@ fn template_examples() -> Vec<Example> {
     ]
 }
 
+// ------------------------------------------------------------------ themes
+
+fn themes_dir(app: &AppHandle) -> CmdResult<PathBuf> {
+    Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("themes"))
+}
+
+/// Built-in themes plus the files in the themes folder (created on first use).
+#[tauri::command]
+fn theme_list(app: AppHandle) -> CmdResult<themes::ThemeList> {
+    let dir = themes_dir(&app)?;
+    let created = themes::ensure_dir(&dir);
+    let mut list = themes::load(&dir);
+    if let Err(e) = created {
+        list.warnings.push(format!("cannot create {}: {e}", dir.display()));
+    }
+    Ok(list)
+}
+
+#[tauri::command]
+fn theme_open_folder(app: AppHandle) -> CmdResult<()> {
+    let dir = themes_dir(&app)?;
+    themes::ensure_dir(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    let opener = if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(opener).arg(&dir).spawn().map_err(|e| format!("cannot open {}: {e}", dir.display()))?;
+    Ok(())
+}
+
 // ------------------------------------------------------------------- setup
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -416,6 +450,8 @@ pub fn run() {
             template_open,
             template_save,
             template_examples,
+            theme_list,
+            theme_open_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

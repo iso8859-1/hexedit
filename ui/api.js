@@ -27,6 +27,8 @@ export const api = {
   templateOpen: () => invoke('template_open'),
   templateSave: (path, text) => invoke('template_save', { path, text }),
   templateExamples: () => invoke('template_examples'),
+  themeList: () => invoke('theme_list'),
+  themeOpenFolder: () => invoke('theme_open_folder'),
 };
 
 export function listen(event, fn) {
