@@ -14,6 +14,9 @@ A hex editor built with Rust and [Tauri 2](https://tauri.app). It has a data ins
   decodes the target only when clicked, with Back navigation, so large files with many structures stay
   fast. Examples are bundled for BMP, PNG, WAV, PE, and ZIP.
 
+- **Themes**: light and dark, chosen in the toolbar (**System** follows the Windows setting). The window
+  title bar switches along with the page.
+
 ## Build and run
 
 Requires a Rust toolchain. On Windows, WebView2 must also be installed (it ships with Windows 10/11).

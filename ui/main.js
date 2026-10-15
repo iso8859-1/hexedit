@@ -432,6 +432,27 @@ async function initSettings() {
   });
 }
 
+// System follows Windows; the native title bar is switched along with the page.
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+
+async function setTheme(choice) {
+  store('ui.theme', choice);
+  const win = window.__TAURI__?.window?.getCurrentWindow();
+  // reset the window first: a forced window theme also changes what darkQuery reports
+  try { await win?.setTheme(choice === 'system' ? null : choice); } catch { /* not permitted */ }
+  const theme = choice === 'system' ? (darkQuery.matches ? 'dark' : 'light') : choice;
+  document.documentElement.dataset.theme = theme;
+}
+
+function initTheme() {
+  const sel = $('sel-theme');
+  sel.value = load('ui.theme', 'system');
+  if (!sel.value) sel.value = 'system';
+  sel.addEventListener('change', () => setTheme(sel.value));
+  darkQuery.addEventListener('change', () => { if (sel.value === 'system') setTheme('system'); });
+  setTheme(sel.value);
+}
+
 function initSplitter() {
   const split = $('splitter');
   const side = $('side');
@@ -472,6 +493,7 @@ function initTabs() {
 // ------------------------------------------------------------------ init
 
 async function main() {
+  initTheme();
   await initSettings();
   view = new HexView();
   setInfo(await api.docInfo());

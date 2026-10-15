@@ -28,33 +28,32 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1b1e24;
-    --bg-alt: #23272e;
-    --bg-panel: #1f2329;
-    --fg: #d8dce3;
-    --muted: #8a919d;
-    --faint: #5c636e;
-    --border: #343a44;
-    --accent: #5b9cff;
-    --accent-fg: #0d1117;
-    --sel: #2f5597;
-    --sel-strong: #3a5a8c;
-    --cursor: #7fb2ff;
-    --hl: #6b5a1e;
-    --error: #ff7b72;
-    --error-bg: #3a1f1f;
-    --offset: #6f7785;
-    --zero: #545b66;
-    --f0: #233327;
-    --f1: #222c3d;
-    --f2: #3a2c22;
-    --f3: #30263b;
-    --f4: #1f3535;
-    --f5: #3a2730;
-    color-scheme: dark;
-  }
+/* set on <html> from the Theme setting; "system" resolves to light or dark */
+:root[data-theme="dark"] {
+  --bg: #1b1e24;
+  --bg-alt: #23272e;
+  --bg-panel: #1f2329;
+  --fg: #d8dce3;
+  --muted: #8a919d;
+  --faint: #5c636e;
+  --border: #343a44;
+  --accent: #5b9cff;
+  --accent-fg: #0d1117;
+  --sel: #2f5597;
+  --sel-strong: #3a5a8c;
+  --cursor: #7fb2ff;
+  --hl: #6b5a1e;
+  --error: #ff7b72;
+  --error-bg: #3a1f1f;
+  --offset: #6f7785;
+  --zero: #545b66;
+  --f0: #233327;
+  --f1: #222c3d;
+  --f2: #3a2c22;
+  --f3: #30263b;
+  --f4: #1f3535;
+  --f5: #3a2730;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }

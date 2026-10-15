@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HexEdit</title>
   <link rel="stylesheet" href="style.css">
+  <script>
+    // pick the theme before the first paint, so a dark start does not flash white
+    (() => {
+      let t = 'system';
+      try { t = JSON.parse(localStorage.getItem('ui.theme')) ?? 'system'; } catch { /* default */ }
+      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
 </head>
 <body>
   <header class="toolbar">
@@ -36,6 +45,13 @@
     </label>
     <label>Code page
       <select id="sel-encoding"></select>
+    </label>
+    <label>Theme
+      <select id="sel-theme">
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
     </label>
   </header>
 
