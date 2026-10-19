@@ -1,7 +1,9 @@
 # Block templates (concept)
 
-**Status:** draft, 2026-10-18. Nothing here is implemented yet. The exact syntax and rules are in the
-specification, [block-templates-spec.md](block-templates-spec.md). This document explains the design.
+**Status:** implemented, 2026-10-19. The exact syntax and rules are in the specification,
+[block-templates-spec.md](block-templates-spec.md). This document explains the design. The MDF4
+example below is bundled as **Examples… → MDF4 blocks** (`templates/mdf4.hbt`), with the blocks it
+refers to filled in.
 
 The C template language ([templates.md](templates.md)) describes formats that map directly to C structs.
 Block templates are a second language for formats made of self-describing blocks. In these formats, the

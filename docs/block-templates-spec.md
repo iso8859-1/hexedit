@@ -1,7 +1,7 @@
 # Block template language, version 1
 
-**Status:** draft specification, 2026-10-18. Nothing here is implemented yet. The motivation and
-design decisions are in [block-templates.md](block-templates.md).
+**Status:** implemented, 2026-10-19 (`src-tauri/src/template/blocks/`). The motivation and design
+decisions are in [block-templates.md](block-templates.md).
 
 This document defines the syntax and the decoding rules of block templates. Wherever it says that
 something works "as in C templates", the rules in [templates.md](templates.md) apply.
@@ -56,7 +56,10 @@ Open and Save dialogs and does not change how the text is parsed.
 There are no floating-point or character literals.
 
 **Keywords:** `alias`, `block`, `const`, `else`, `endian`, `enum`, `file`, `flags`, `frame`, `if`,
-`match`, `struct`, `where`. They cannot be used as identifiers.
+`match`, `struct`, `where`. None of them can name a top-level declaration. `if`, `else`, `match` and
+`where` cannot be used as identifiers at all. The others only start top-level declarations, so they
+can name fields, sections, parameters, enum items and flags, and appear in expressions
+(`flags: CgFlags`, `if flags.vlsd`).
 
 **Contextual words**, which are identifiers everywhere else:
 

@@ -7,11 +7,11 @@ use serde::Serialize;
 use super::*;
 
 /// Array elements shown in the tree; the rest is only accounted for in the size.
-const MAX_CHILDREN: u64 = 2000;
+pub(crate) const MAX_CHILDREN: u64 = 2000;
 /// Upper bound on evaluated nodes, protects against garbage array counts.
-const MAX_NODES: u64 = 1_000_000;
+pub(crate) const MAX_NODES: u64 = 1_000_000;
 /// Longest string value rendered for char arrays.
-const MAX_STRING_CHARS: usize = 512;
+pub(crate) const MAX_STRING_CHARS: usize = 512;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Node {
@@ -34,6 +34,12 @@ pub struct Node {
     /// lazy link: decoded only when the user follows it
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link: Option<NodeLink>,
+    /// block templates: the block that dispatch chose for the root
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dispatched: Option<String>,
+    /// block templates: where "Next block" continues
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<NodeLink>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -48,7 +54,7 @@ fn is_zero(v: &u64) -> bool {
 }
 
 impl Node {
-    fn new(name: &str, ty: &str, offset: u64, size: u64, value: String) -> Self {
+    pub(crate) fn new(name: &str, ty: &str, offset: u64, size: u64, value: String) -> Self {
         Node {
             name: name.to_string(),
             ty: ty.to_string(),
@@ -60,10 +66,12 @@ impl Node {
             more: 0,
             error: None,
             link: None,
+            dispatched: None,
+            next: None,
         }
     }
 
-    fn error(name: &str, offset: u64, msg: String) -> Self {
+    pub(crate) fn error(name: &str, offset: u64, msg: String) -> Self {
         let mut n = Node::new(name, "", offset, 0, String::new());
         n.error = Some(msg);
         n
@@ -80,6 +88,8 @@ pub enum Root {
     Instances,
     /// a single type placed at the base offset
     Type(String),
+    /// block templates: the block whose checks match at the base offset
+    ByMagic,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +102,7 @@ enum Val {
 pub fn apply(t: &Template, data: &[u8], root: Root, base: u64, opts: &Options) -> Result<Node, String> {
     let mut ev = Ev::new(t, data, opts.endian, opts.encoding, false);
     match root {
+        Root::ByMagic => Err("only block templates decode by magic".into()),
         Root::Type(name) => {
             let ts = t.lookup_type(&name).ok_or_else(|| format!("unknown type '{name}'"))?;
             let (node, _) = ev.eval_decl(&name, &ts.ty, &ts.name, &ts.dims, None, None, base)?;
@@ -710,7 +721,7 @@ impl<'a> Ev<'a> {
     }
 }
 
-fn sign_extend(raw: u128, p: Prim) -> i128 {
+pub(crate) fn sign_extend(raw: u128, p: Prim) -> i128 {
     let bits = p.size() * 8;
     if p.is_signed() && bits < 128 {
         let s = 128 - bits as u32;

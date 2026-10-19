@@ -274,6 +274,7 @@ button.copy svg { width: 13px; height: 13px; fill: none; stroke: currentColor; s
   font-size: 12px;
   white-space: pre-wrap;
 }
+.error.warn { color: var(--muted); background: var(--bg-alt); }
 
 /* template tree -------------------------------------------------------- */
 

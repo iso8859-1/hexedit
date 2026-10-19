@@ -5,6 +5,8 @@ import { state, on, emit, hex, load, store, parseOffset } from './state.js';
 import { addCopyButton } from './copy.js';
 
 const INSTANCES = '\u0000instances';
+// block templates: decode whichever block matches; the backend knows this name
+const BY_MAGIC = '(by magic)';
 const COLORS = 6;
 const MAX_RANGES = 200_000;
 
@@ -152,9 +154,10 @@ export class TemplatePanel {
     this.parse(true);
   }
 
-  showError(msg, line = null) {
+  showError(msg, line = null, warn = false) {
     this.errorEl.hidden = !msg;
     this.errorEl.textContent = msg ?? '';
+    this.errorEl.classList.toggle('warn', warn);
     if (this.errorLine !== line) {
       this.errorLine = line;
       this.updateGutter();
@@ -169,10 +172,13 @@ export class TemplatePanel {
       this.showError(`line ${r.error.line}:${r.error.col}: ${r.error.msg}`, r.error.line);
       return;
     }
-    this.showError(null);
+    // parse-time warnings of block templates; shown until an error replaces them
+    this.warnings = r.warnings.map((w) => `⚠ ${w}`).join('\n') || null;
+    this.showError(this.warnings, null, true);
     const prev = this.rootSel.value || this.wantedRoot;
     this.rootSel.replaceChildren();
     if (r.has_instances) this.rootSel.append(new Option('(template declarations)', INSTANCES));
+    if (r.by_magic) this.rootSel.append(new Option(BY_MAGIC, BY_MAGIC));
     for (const t of r.types) this.rootSel.append(new Option(t, t));
     const values = [...this.rootSel.options].map((o) => o.value);
     if (values.includes(prev)) this.rootSel.value = prev;
@@ -198,7 +204,10 @@ export class TemplatePanel {
     this.rootSel.value = name;
   }
 
-  /** Decodes the link's type at its target; the current view goes on the Back stack. */
+  /**
+   * Decodes the link's type at its target; the current view goes on the Back stack.
+   * Block templates may find another block there, which then becomes the root.
+   */
   followLink(link) {
     this.history.push({
       root: this.rootSel.value,
@@ -208,11 +217,10 @@ export class TemplatePanel {
       scroll: this.tree.scrollTop,
     });
     this.backBtn.disabled = false;
-    this.setRoot(link.type);
     this.offsetIn.value = `0x${hex(link.offset, 1)}`;
     store('tpl.offset', this.offsetIn.value);
     this.select(link.offset, 0);
-    this.apply({ expanded: new Set(), scroll: 0 });
+    this.apply({ expanded: new Set(), scroll: 0 }, link.type);
   }
 
   back() {
@@ -226,13 +234,16 @@ export class TemplatePanel {
     this.apply({ expanded: h.expanded, scroll: h.scroll });
   }
 
-  async apply(restore = null) {
-    if (!this.rootSel.value) {
+  /** `rootName` is a followed link's type; it replaces the selected root. */
+  async apply(restore = null, rootName = null) {
+    if (!rootName && !this.rootSel.value) {
       this.clear();
       return;
     }
+    const followed = rootName !== null;
+    rootName ??= this.rootSel.value;
     let offset;
-    if (this.follow.checked && !this.isInstances()) {
+    if (this.follow.checked && rootName !== INSTANCES) {
       offset = state.cursor;
       this.offsetIn.value = `0x${hex(offset, 1)}`;
     } else {
@@ -244,10 +255,11 @@ export class TemplatePanel {
     }
     const seq = ++this.seq;
     try {
-      const root = this.isInstances() ? null : this.rootSel.value;
+      const root = rootName === INSTANCES ? null : rootName;
       const node = await api.templateApply(this.editor.value, root, offset, state.littleEndian, state.encoding);
       if (seq !== this.seq) return;
-      this.showError(null);
+      if (followed) this.setRoot(node.dispatched ?? rootName);
+      this.showError(this.warnings, null, true);
       this.applied = true;
       // remembered so the template is re-applied on the next start
       this.wantedRoot = this.rootSel.value;
@@ -255,6 +267,7 @@ export class TemplatePanel {
       this.render(node, restore);
     } catch (e) {
       if (seq !== this.seq) return;
+      if (followed) this.setRoot(rootName);
       const m = /^line (\d+):/.exec(String(e));
       this.showError(String(e), m ? Number(m[1]) : null);
     }
@@ -309,7 +322,12 @@ export class TemplatePanel {
     const body = document.createElement('div');
     const top = root.name === 'template' && !root.type ? root.children ?? [] : [root];
     for (const child of top) body.append(this.nodeEl(child, 0, child.name, expanded, true));
-    if (top.length === 1 && top[0] === root && root.size > 0 && root.offset + root.size < state.size) {
+    if (root.next) {
+      // block template: the next block, found by magic
+      if (root.next.offset < state.size) {
+        body.append(this.linkRow(`Next block at 0x${hex(root.next.offset, 1)}`, 0, root.next));
+      }
+    } else if (top.length === 1 && top[0] === root && root.size > 0 && root.offset + root.size < state.size) {
       // single type: page on to the instance that follows it
       const next = root.offset + root.size;
       body.append(this.linkRow(`Next ${this.rootSel.value} at 0x${hex(next, 1)}`, 0,

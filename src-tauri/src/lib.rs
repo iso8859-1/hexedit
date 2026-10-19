@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager, State, WindowEvent};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use document::Document;
-use template::{Endian, Root};
+use template::{Endian, Parsed, Root};
 
 #[derive(Default)]
 struct AppState {
@@ -262,18 +262,32 @@ fn char_table(encoding: String) -> Vec<String> {
 
 // ---------------------------------------------------------------- templates
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 struct ParseResult {
     error: Option<template::TemplateError>,
     types: Vec<String>,
     has_instances: bool,
+    /// block templates: "(by magic)" is offered as a root
+    by_magic: bool,
+    warnings: Vec<String>,
 }
 
 #[tauri::command]
 fn template_parse(source: String) -> ParseResult {
-    match template::parse(&source) {
-        Ok(t) => ParseResult { error: None, types: t.root_names.clone(), has_instances: !t.instances.is_empty() },
-        Err(e) => ParseResult { error: Some(e), types: vec![], has_instances: false },
+    match Parsed::parse(&source) {
+        Ok(Parsed::C(t)) => ParseResult {
+            types: t.root_names.clone(),
+            has_instances: !t.instances.is_empty(),
+            ..Default::default()
+        },
+        Ok(Parsed::Blocks(t)) => ParseResult {
+            types: t.root_names.clone(),
+            has_instances: t.file.is_some(),
+            by_magic: !t.blocks.is_empty(),
+            warnings: t.warnings.clone(),
+            ..Default::default()
+        },
+        Err(e) => ParseResult { error: Some(e), ..Default::default() },
     }
 }
 
@@ -286,14 +300,15 @@ fn template_apply(
     little_endian: bool,
     encoding: String,
 ) -> CmdResult<template::Node> {
-    let t = template::parse(&source).map_err(|e| e.to_string())?;
+    let t = Parsed::parse(&source).map_err(|e| e.to_string())?;
     let root = match root {
+        Some(name) if name == template::blocks::BY_MAGIC => Root::ByMagic,
         Some(name) => Root::Type(name),
         None => Root::Instances,
     };
     let opts = template::Options { endian: endian(little_endian), encoding: encodings::lookup(&encoding) };
     let doc = state.doc.lock().unwrap();
-    template::apply(&t, &doc.data, root, offset, &opts)
+    t.apply(&doc.data, root, offset, &opts)
 }
 
 #[derive(Serialize)]
@@ -308,7 +323,9 @@ async fn template_open(app: AppHandle) -> CmdResult<Option<TemplateFile>> {
         .dialog()
         .file()
         .set_title("Open template")
+        .add_filter("Templates", &["h", "c", "hpp", "hbt", "txt"])
         .add_filter("C templates", &["h", "c", "hpp", "txt"])
+        .add_filter("Block templates", &["hbt"])
         .add_filter("All files", &["*"])
         .blocking_pick_file()
     else {
@@ -321,14 +338,16 @@ async fn template_open(app: AppHandle) -> CmdResult<Option<TemplateFile>> {
 
 #[tauri::command]
 async fn template_save(app: AppHandle, path: Option<String>, text: String) -> CmdResult<Option<String>> {
+    let blocks = matches!(template::blocks::detect(&text), Ok(true));
+    let (filter, ext) = if blocks { ("Block templates", "hbt") } else { ("C templates", "h") };
     let path = match path {
         Some(p) => PathBuf::from(p),
         None => match app
             .dialog()
             .file()
             .set_title("Save template")
-            .add_filter("C templates", &["h"])
-            .set_file_name("template.h")
+            .add_filter(filter, &[ext])
+            .set_file_name(format!("template.{ext}"))
             .blocking_save_file()
         {
             Some(p) => p.into_path().map_err(|e| e.to_string())?,
@@ -353,6 +372,7 @@ fn template_examples() -> Vec<Example> {
         Example { name: "WAV audio", text: include_str!("../../templates/wav.h") },
         Example { name: "PE / MZ header", text: include_str!("../../templates/pe.h") },
         Example { name: "ZIP local header", text: include_str!("../../templates/zip.h") },
+        Example { name: "MDF4 blocks", text: include_str!("../../templates/mdf4.hbt") },
     ]
 }
 

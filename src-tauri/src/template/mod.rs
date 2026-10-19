@@ -6,6 +6,10 @@
 //! * top-level declarations place instances in the file (`Header hdr @ 0x10;`),
 //! * `#pragma endian big|little`, `#pragma pack(...)`, `#pragma ptrsize 4|8`.
 
+//!
+//! Text starting with `#lang blocks 1` is a block template instead, see [`blocks`].
+
+pub mod blocks;
 mod eval;
 mod lexer;
 mod parser;
@@ -15,6 +19,30 @@ use std::fmt;
 
 pub use eval::{apply, Node, Options, Root};
 pub use parser::parse;
+
+/// A parsed template in either language.
+pub enum Parsed {
+    C(Template),
+    Blocks(blocks::Template),
+}
+
+impl Parsed {
+    /// Chooses the parser from the `#lang` line.
+    pub fn parse(src: &str) -> Result<Self, TemplateError> {
+        if blocks::detect(src)? {
+            blocks::parse(src).map(Parsed::Blocks)
+        } else {
+            parse(src).map(Parsed::C)
+        }
+    }
+
+    pub fn apply(&self, data: &[u8], root: Root, base: u64, opts: &Options) -> Result<Node, String> {
+        match self {
+            Parsed::C(t) => apply(t, data, root, base, opts),
+            Parsed::Blocks(t) => blocks::apply(t, data, root, base, opts),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct TemplateError {

@@ -181,6 +181,41 @@ uint8_t tail[16] @ FILE_SIZE - 16;   // FILE_SIZE: length of the file</pre>
       <code>sizeof(Type)</code> and <code>hdr.field</code> paths.</p>
     <p>Links (<code>-&gt;</code>) are not decoded until clicked. Following one makes the target type the
       root; <b>←</b> or Alt+← goes back. A link whose value is 0 is shown as <code>null</code>.</p>
+    <h2>Block templates</h2>
+    <p>Text whose first line is <code>#lang blocks 1</code> is a block template, for formats made of
+      self-describing blocks such as MDF4 (see the example). A frame describes the layout blocks share, and
+      each block fills in its links and data. Following a link picks the block type from the bytes at the
+      target. <b>(by magic)</b> decodes whichever block matches at the offset.</p>
+<pre>#lang blocks 1
+endian little
+
+frame Block(magic) align 8 {
+    header {
+        id:     ascii(4) where id == magic   // checks select the block type
+        length: u64
+        count:  u64
+    }
+    links: [u64; count]                     // raw slots, named by each block
+    data:  size(length - 20 - 8 * count)
+}
+
+flags Flags: u8 { compressed = 0, indexed = 3 }
+
+block TX: Block("##TX") { data { text: utf8 } }
+block HD: Block("##HD") {
+    data {
+        flags: Flags
+        if flags.indexed { index: u32 }
+        else             { start: u64 }
+    }
+    links {
+        next:    -&gt; HD
+        comment: -&gt; TX | HD                 // dispatched by magic when followed
+    }
+}
+
+file { hd: HD @ 64 }</pre>
+    <p>The full syntax is in <code>docs/block-templates-spec.md</code>.</p>
     <form method="dialog"><div class="buttons"><button class="primary">Close</button></div></form>
   </dialog>
 

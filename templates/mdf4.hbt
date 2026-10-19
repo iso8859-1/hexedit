@@ -1,0 +1,322 @@
+#lang blocks 1
+// ASAM MDF 4.x measurement files: the ID block and the common block types.
+// Root "(template declarations)" decodes the file start; click links to walk
+// the block graph, or use "(by magic)" with "cursor" to decode any block.
+// Record data (DT) is not interpreted: apply a C template at its offset.
+endian little
+
+frame Mdf4Block(magic) align 8 {
+    header {
+        id:         ascii(4) where id == magic
+        reserved:   u32
+        length:     u64
+        link_count: u64
+    }
+    links: [u64; link_count]
+    data:  size(length - 24 - 8 * link_count)
+}
+
+struct Id {                              // 64 bytes at offset 0, no block frame
+    file_id:          ascii(8) where file_id == "MDF"
+    version:          ascii(8)
+    program:          ascii(8)
+    reserved0:        [u8; 4]
+    version_number:   u16
+    reserved1:        [u8; 30]
+    unfinalized:      u16
+    unfinalized_user: u16
+}
+
+block TX: Mdf4Block("##TX") { data { text: utf8 } }
+block MD: Mdf4Block("##MD") { data { xml: utf8 } }
+alias Text = TX | MD
+
+block HD: Mdf4Block("##HD") {
+    data {
+        start_time_ns:  u64
+        tz_offset_min:  i16
+        dst_offset_min: i16
+        time_flags:     u8
+        time_class:     u8
+        flags:          u8
+        reserved:       u8
+        start_angle:    f64
+        start_distance: f64
+    }
+    links {
+        first_dg:     -> DG
+        file_history: -> FH
+        channel_tree: -> CH
+        first_at:     -> AT
+        first_ev:     -> EV
+        comment:      -> Text
+    }
+}
+
+block FH: Mdf4Block("##FH") {
+    data {
+        time_ns:        u64
+        tz_offset_min:  i16
+        dst_offset_min: i16
+        time_flags:     u8
+        reserved:       [u8; 3]
+    }
+    links {
+        next:    -> FH
+        comment: -> MD
+    }
+}
+
+block CH: Mdf4Block("##CH") {
+    data {
+        element_count: u32
+        type:          u8
+        reserved:      [u8; 3]
+    }
+    links {
+        next:     -> CH
+        first_ch: -> CH
+        name:     -> TX
+        comment:  -> Text
+        elements: [-> DG | CG | CN; 3 * element_count]
+    }
+}
+
+flags AtFlags: u16 { embedded = 0, compressed = 1, md5_valid = 2 }
+
+block AT: Mdf4Block("##AT") {
+    data {
+        flags:         AtFlags
+        creator_index: u16
+        reserved:      [u8; 4]
+        md5:           [u8; 16]
+        original_size: u64
+        embedded_size: u64
+        embedded_data: [u8; embedded_size]
+    }
+    links {
+        next:      -> AT
+        filename:  -> TX
+        mime_type: -> TX
+        comment:   -> Text
+    }
+}
+
+block EV: Mdf4Block("##EV") {
+    data {
+        type:             u8
+        sync_type:        u8
+        range_type:       u8
+        cause:            u8
+        flags:            u8
+        reserved:         [u8; 3]
+        scope_count:      u32
+        attachment_count: u16
+        creator_index:    u16
+        sync_base_value:  i64
+        sync_factor:      f64
+    }
+    links {
+        next:        -> EV
+        parent:      -> EV
+        range:       -> EV
+        name:        -> TX
+        comment:     -> Text
+        scope:       [-> CG | CN; scope_count]
+        attachments: [-> AT; attachment_count]
+    }
+}
+
+block DG: Mdf4Block("##DG") {
+    data {
+        record_id_len: u8
+        reserved:      [u8; 7]
+    }
+    links {
+        next:     -> DG
+        first_cg: -> CG
+        data:     -> DT | DL | DZ | HL
+        comment:  -> Text
+    }
+}
+
+flags CgFlags: u16 { vlsd = 0, bus_event = 1, plain_bus_event = 2, remote_master = 3, event_group = 4 }
+
+block CG: Mdf4Block("##CG") {
+    data {
+        record_id:      u64
+        cycle_count:    u64
+        flags:          CgFlags
+        path_separator: u16
+        reserved:       u32
+        if flags.vlsd { vlsd_size: u64 }
+        else          { data_bytes: u32, inval_bytes: u32 }
+    }
+    links {
+        next:       -> CG
+        first_cn:   -> CN
+        acq_name:   -> TX
+        acq_source: -> SI
+        first_sr:   -> SR
+        comment:    -> Text
+        if flags.remote_master { master: -> CG }
+    }
+}
+
+block SI: Mdf4Block("##SI") {
+    data {
+        type:     u8
+        bus_type: u8
+        flags:    u8
+        reserved: [u8; 5]
+    }
+    links {
+        name:    -> TX
+        path:    -> TX
+        comment: -> Text
+    }
+}
+
+flags CnFlags: u32 {
+    all_invalid = 0, inval_present = 1, precision = 2, value_range = 3,
+    limit_range = 4, ext_limit_range = 5, discrete = 6, calibration = 7,
+    calculated = 8, virtual = 9, bus_event = 10, monotonous = 11,
+    default_x = 12, event_signal = 13, vlsd = 14,
+}
+
+enum ChannelType: u8 { VALUE = 0, VLSD, MASTER, VIRTUAL_MASTER, SYNC, MLSD, VIRTUAL, VLSC }
+
+block CN: Mdf4Block("##CN") {
+    data {
+        type:             ChannelType
+        sync_type:        u8
+        data_type:        u8
+        bit_offset:       u8
+        byte_offset:      u32
+        bit_count:        u32
+        flags:            CnFlags
+        inval_bit_pos:    u32
+        precision:        u8
+        reserved:         u8
+        attachment_count: u16
+        val_range:        [f64; 2]
+        limit:            [f64; 2]
+        limit_ext:        [f64; 2]
+    }
+    links {
+        next:        -> CN
+        composition: -> CA | CN
+        name:        -> TX
+        source:      -> SI
+        conversion:  -> CC
+        data:        -> DT | DL | DZ | HL | SD
+        unit:        -> Text
+        comment:     -> Text
+        attachments: [-> AT; attachment_count]
+        if flags.default_x {
+            default_x_dg: -> DG
+            default_x_cg: -> CG
+            default_x_cn: -> CN
+        }
+    }
+}
+
+enum ConvType: u8 { NON = 0, LIN, RAT, ALG, TABI, TAB, RTAB, TABX, RTABX, TTAB, TRANS, BITFIELD }
+
+block CC: Mdf4Block("##CC") {
+    data {
+        type:      ConvType
+        precision: u8
+        flags:     u16
+        ref_count: u16
+        val_count: u16
+        phy_range: [f64; 2]
+        match type {
+            LIN => { b: f64, a: f64 }
+            RAT => { p: [f64; 6] }
+            _   => { val: [f64; val_count] }
+        }
+    }
+    links {
+        name:    -> TX
+        unit:    -> Text
+        comment: -> Text
+        inverse: -> CC
+        match type {
+            ALG => { formula: -> TX }
+            _   => { refs: [-> TX | CC; ref_count] }
+        }
+    }
+}
+
+block CA: Mdf4Block("##CA") {            // links depend on the array type and are shown raw
+    data {
+        type:               u8
+        storage:            u8
+        dim_count:          u16
+        flags:              u32
+        byte_offset_base:   i32
+        inval_bit_pos_base: u32
+        dim_size:           [u64; dim_count]
+    }
+}
+
+block SR: Mdf4Block("##SR") {
+    data {
+        cycle_count: u64
+        interval:    f64
+        sync_type:   u8
+        flags:       u8
+        reserved:    [u8; 6]
+    }
+    links {
+        next: -> SR
+        data: -> RD | DZ | DL | HL
+    }
+}
+
+flags DlFlags: u8 { equal_length = 0, time_values = 1, angle_values = 2, distance_values = 3 }
+
+block DL: Mdf4Block("##DL") {
+    data {
+        flags:    DlFlags
+        reserved: [u8; 3]
+        count:    u32
+        if flags.equal_length { equal_length: u64 }
+        else                  { offsets: [u64; count] }
+    }
+    links {
+        next:   -> DL
+        blocks: [-> DT | DZ | SD | RD; count]
+    }
+}
+
+block HL: Mdf4Block("##HL") {
+    data {
+        flags:    u16
+        zip_type: u8
+        reserved: [u8; 5]
+    }
+    links { first_dl: -> DL }
+}
+
+block DZ: Mdf4Block("##DZ") {
+    data {
+        org_block_type:  ascii(2)
+        zip_type:        u8
+        reserved:        u8
+        zip_parameter:   u32
+        org_data_length: u64
+        data_length:     u64
+        data:            [u8; data_length]
+    }
+}
+
+block DT: Mdf4Block("##DT") { data { records: [u8; ..] } }
+block SD: Mdf4Block("##SD") { data { records: [u8; ..] } }
+block RD: Mdf4Block("##RD") { data { records: [u8; ..] } }
+
+file {
+    id: Id
+    hd: HD @ 64
+}
