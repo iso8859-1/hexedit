@@ -25,6 +25,7 @@ A hex editor built with Rust and [Tauri 2](https://tauri.app). It has a data ins
   self-describing blocks, such as MDF4. Frames describe the layout blocks share, `where` checks pick the
   block type at a link's target, and fields can depend on flags and type fields. See
   **[docs/block-templates.md](docs/block-templates.md)**. Examples are bundled for MDF4 and Vector BLF (CAN logs).
+  For editing `.hbt` files in VS Code, `editors/vscode` has a syntax highlighting extension.
 
 - **Themes**: every theme is a TOML file in `%APPDATA%\dev.hexedit.app\themes`, including the standard
   Light and Dark, so they can be edited, replaced or removed, and new ones added. Choose one in the
@@ -176,6 +177,7 @@ src-tauri/src/
   themes.rs        theme files (TOML) from the config folder
 ui/                index.html, style.css, main.js (wiring/keys), hexview.js, inspector.js, template.js
 templates/         example templates, embedded into the binary
+editors/vscode/    VS Code extension: syntax highlighting for block templates (.hbt)
 themes/            standard themes (Light, Dark, Solarized Dark, and a high-contrast version of each), installed into the themes folder
 ```
 

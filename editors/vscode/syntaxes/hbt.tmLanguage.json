@@ -1,0 +1,327 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "HexEdit block template",
+  "scopeName": "source.hbt",
+  "patterns": [
+    {
+      "include": "#lang"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#body"
+    }
+  ],
+  "repository": {
+    "lang": {
+      "match": "^\\s*(#lang)\\s+(blocks)\\s+(\\d+)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.directive.hbt"
+        },
+        "2": {
+          "name": "entity.name.type.language.hbt"
+        },
+        "3": {
+          "name": "constant.numeric.hbt"
+        }
+      }
+    },
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.hbt",
+          "begin": "//",
+          "end": "$"
+        },
+        {
+          "name": "comment.block.hbt",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "comment": "endian little / endian big",
+          "match": "^\\s*(endian)\\s+(little|big)\\b",
+          "captures": {
+            "1": {
+              "name": "keyword.other.endian.hbt"
+            },
+            "2": {
+              "name": "constant.language.hbt"
+            }
+          }
+        },
+        {
+          "comment": "frame Name(params) align n",
+          "begin": "^\\s*(frame)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "end": "(?=\\{)|$",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.frame.hbt"
+            },
+            "2": {
+              "name": "entity.name.type.frame.hbt"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#comments"
+            },
+            {
+              "match": "\\balign\\b",
+              "name": "keyword.other.align.hbt"
+            },
+            {
+              "match": "[A-Za-z_][A-Za-z0-9_]*",
+              "name": "variable.parameter.hbt"
+            },
+            {
+              "include": "#expression"
+            }
+          ]
+        },
+        {
+          "comment": "block Name: Frame(args)",
+          "match": "^\\s*(block)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)?",
+          "captures": {
+            "1": {
+              "name": "storage.type.block.hbt"
+            },
+            "2": {
+              "name": "entity.name.type.block.hbt"
+            },
+            "3": {
+              "name": "punctuation.separator.hbt"
+            },
+            "4": {
+              "name": "entity.name.type.frame.hbt"
+            }
+          }
+        },
+        {
+          "comment": "struct / enum / flags Name[: Type]",
+          "match": "^\\s*(struct|enum|flags)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*))?",
+          "captures": {
+            "1": {
+              "name": "storage.type.hbt"
+            },
+            "2": {
+              "name": "entity.name.type.hbt"
+            },
+            "3": {
+              "name": "punctuation.separator.hbt"
+            },
+            "4": {
+              "name": "support.type.primitive.hbt"
+            }
+          }
+        },
+        {
+          "comment": "alias Name = A | B",
+          "begin": "^\\s*(alias)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(=)",
+          "end": "$",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.alias.hbt"
+            },
+            "2": {
+              "name": "entity.name.type.hbt"
+            },
+            "3": {
+              "name": "keyword.operator.assignment.hbt"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#comments"
+            },
+            {
+              "include": "#targets"
+            }
+          ]
+        },
+        {
+          "comment": "const NAME = expr",
+          "match": "^\\s*(const)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.const.hbt"
+            },
+            "2": {
+              "name": "variable.other.constant.hbt"
+            }
+          }
+        },
+        {
+          "comment": "file { }",
+          "match": "^\\s*(file)\\s*(?=\\{)",
+          "captures": {
+            "1": {
+              "name": "storage.type.file.hbt"
+            }
+          }
+        }
+      ]
+    },
+    "body": {
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#link"
+        },
+        {
+          "comment": "a section of a frame or block: name {, name @ expr {",
+          "match": "(?:^|(?<=\\{))\\s*(?!(?:if|else|match|file)\\b)([A-Za-z_][A-Za-z0-9_]*)\\s*(?=(?:@[^{]*)?\\{)",
+          "captures": {
+            "1": {
+              "name": "entity.name.section.hbt"
+            }
+          }
+        },
+        {
+          "comment": "an enum item or flag name: NAME = value",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?==(?![=>]))",
+          "captures": {
+            "1": {
+              "name": "variable.other.enummember.hbt"
+            }
+          }
+        },
+        {
+          "comment": "a field: name: type",
+          "match": "([A-Za-z_][A-Za-z0-9_]*)\\s*(:)(?!:)\\s*(?:\\b((?:[ui](?:8|16|32|64)|f(?:32|64))(?:le|be)?)\\b|\\b((?:ascii|utf8|utf16(?:le|be)?|utf32(?:le|be)?|cp))\\b|(?!(?:if|else|match|where|size|sizeof)\\b)([A-Za-z_][A-Za-z0-9_]*))?",
+          "captures": {
+            "1": {
+              "name": "variable.other.member.hbt"
+            },
+            "2": {
+              "name": "punctuation.separator.hbt"
+            },
+            "3": {
+              "name": "support.type.primitive.hbt"
+            },
+            "4": {
+              "name": "support.type.string.hbt"
+            },
+            "5": {
+              "name": "entity.name.type.hbt"
+            }
+          }
+        },
+        {
+          "include": "#expression"
+        }
+      ]
+    },
+    "link": {
+      "comment": "-> A | B, up to @, where, ; ] or the end of the line",
+      "begin": "->",
+      "end": "(?=@|\\bwhere\\b|[;\\]},)]|//)|$",
+      "beginCaptures": {
+        "0": {
+          "name": "keyword.operator.link.hbt"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#targets"
+        }
+      ]
+    },
+    "targets": {
+      "patterns": [
+        {
+          "match": "\\|",
+          "name": "keyword.operator.hbt"
+        },
+        {
+          "match": "[A-Za-z_][A-Za-z0-9_]*",
+          "name": "entity.name.type.hbt"
+        }
+      ]
+    },
+    "expression": {
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "match": "\\b(?:if|else|match|where)\\b",
+          "name": "keyword.control.hbt"
+        },
+        {
+          "match": "\\b(?:size|sizeof)(?=\\s*\\()",
+          "name": "support.function.hbt"
+        },
+        {
+          "match": "\\bFILE_SIZE\\b",
+          "name": "constant.language.hbt"
+        },
+        {
+          "match": "\\b(?:[ui](?:8|16|32|64)|f(?:32|64))(?:le|be)?\\b",
+          "name": "support.type.primitive.hbt"
+        },
+        {
+          "match": "\\b(?:ascii|utf8|utf16(?:le|be)?|utf32(?:le|be)?|cp)\\b",
+          "name": "support.type.string.hbt"
+        },
+        {
+          "match": "\\b_\\b",
+          "name": "constant.language.wildcard.hbt"
+        },
+        {
+          "match": "=>",
+          "name": "keyword.operator.arrow.hbt"
+        },
+        {
+          "match": "@",
+          "name": "keyword.operator.placement.hbt"
+        },
+        {
+          "match": "\\.\\.",
+          "name": "keyword.operator.range.hbt"
+        },
+        {
+          "match": "<<|>>|<=|>=|==|!=|&&|\\|\\||[-+*/%<>&^|!~?:=]",
+          "name": "keyword.operator.hbt"
+        },
+        {
+          "match": "[,;]",
+          "name": "punctuation.separator.hbt"
+        }
+      ]
+    },
+    "numbers": {
+      "match": "\\b(?:0[xX][0-9A-Fa-f_]+|0[bB][01_]+|0[oO][0-7_]+|[0-9][0-9_]*)\\b",
+      "name": "constant.numeric.hbt"
+    },
+    "strings": {
+      "name": "string.quoted.double.hbt",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "match": "\\\\(?:[\\\\\"nrt0]|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]+\\})",
+          "name": "constant.character.escape.hbt"
+        },
+        {
+          "match": "\\\\.",
+          "name": "invalid.illegal.escape.hbt"
+        }
+      ]
+    }
+  }
+}

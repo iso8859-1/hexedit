@@ -263,6 +263,11 @@ previous block, with its expanded rows and scroll position.
   `⚠ beyond end of data section`. Unused bytes at the end of a section are shown as
   `⋯ N unparsed bytes`.
 
+## Editing in VS Code
+
+`editors/vscode` is a small VS Code extension that highlights `.hbt` files. Its
+[README](../editors/vscode/README.md) explains how to install it.
+
 ## Implementation notes
 
 - New parser and evaluator in their own module. They share `Node` (the tree output), the expression

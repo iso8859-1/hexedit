@@ -1,0 +1,47 @@
+{
+  "name": "hexedit-hbt",
+  "displayName": "HexEdit block templates",
+  "description": "Syntax highlighting for HexEdit block templates (.hbt)",
+  "version": "0.1.0",
+  "publisher": "iso8859-1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iso8859-1/hexedit.git"
+  },
+  "files": [
+    "syntaxes",
+    "language-configuration.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "hbt",
+        "aliases": [
+          "HexEdit block template",
+          "hbt"
+        ],
+        "extensions": [
+          ".hbt"
+        ],
+        "firstLine": "^﻿?\\s*#lang\\s+blocks\\b",
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "hbt",
+        "scopeName": "source.hbt",
+        "path": "./syntaxes/hbt.tmLanguage.json"
+      }
+    ]
+  }
+}
