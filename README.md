@@ -6,6 +6,9 @@ A hex editor built with Rust and [Tauri 2](https://tauri.app). It has a data ins
   (`Insert`), selection with mouse or Shift+keys, copy/paste as hex or text, undo/redo, go to (`Ctrl+G`),
   and find for hex bytes, code page text, UTF-8, or UTF-16 (`Ctrl+F`, `F3`). **Recent…** next to Open
   lists the last 10 files opened or saved.
+- **Compressed data**: right-click a selection (or a template tree row, e.g. a ZIP entry's data) and
+  choose **Open decompressed** to inflate deflate, zlib or gzip data into a new window. The window
+  holds an unsaved document of its own, with its own undo, and can be saved with Save as.
 - **Data inspector**: decodes the bytes at the cursor as binary, (u)int8/16/24/32/64, float16/32/64,
   (S/U)LEB128, characters and strings in the selected code page, UTF-8 and UTF-16, Unix time (32/64),
   FILETIME, DOS date/time, OLE date, and GUID. Double-click a numeric value to edit it. Byte order and
@@ -160,7 +163,8 @@ Not supported: loops or "repeat until EOF" arrays, `if` blocks, function-like ma
 
 ```
 src-tauri/src/
-  lib.rs           Tauri commands, dialogs, window handling
+  lib.rs           Tauri commands, dialogs, windows (one document per window)
+  compress.rs      deflate/zlib/gzip decompression for "Open decompressed"
   document.rs      in-memory buffer, undo/redo with typing coalescing, atomic save
   inspector.rs     basic type decoding/encoding
   encodings.rs     code pages (encoding_rs), search patterns

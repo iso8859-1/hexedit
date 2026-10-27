@@ -435,6 +435,12 @@ export class TemplatePanel {
       this.activeRow = row;
       if (node.size > 0) this.select(node.offset, node.size);
     });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      row.click();
+      // the menu acts on the selection, which is now this row's bytes
+      if (node.size > 0) emit('menu', { x: e.clientX, y: e.clientY });
+    });
     row.addEventListener('mouseenter', () => {
       state.highlight = node.size > 0 ? { start: node.offset, len: node.size } : null;
       emit('highlight');

@@ -26,6 +26,8 @@ pub struct Touched {
 #[derive(Default)]
 pub struct Document {
     pub path: Option<PathBuf>,
+    /// name of a document without a file, e.g. where decompressed data came from
+    pub title: Option<String>,
     pub data: Vec<u8>,
     undo: Vec<Edit>,
     redo: Vec<Edit>,
@@ -49,11 +51,18 @@ impl Document {
         Ok(Document { path: Some(path.to_path_buf()), data, ..Default::default() })
     }
 
+    /// An unsaved document holding `data`. It is not dirty: closing it loses
+    /// nothing that cannot be made again.
+    pub fn from_bytes(data: Vec<u8>, title: String) -> Self {
+        Document { title: Some(title), data, ..Default::default() }
+    }
+
     pub fn name(&self) -> String {
         self.path
             .as_ref()
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().into_owned())
+            .or_else(|| self.title.clone())
             .unwrap_or_else(|| "Untitled".into())
     }
 

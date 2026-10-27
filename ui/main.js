@@ -173,6 +173,80 @@ async function undoRedo(redo) {
   emit('cursor');
 }
 
+// ------------------------------------------------------------ context menu
+
+const DECOMPRESS = [
+  ['auto', 'Open decompressed'],
+  ['zlib', 'Open decompressed as zlib'],
+  ['gzip', 'Open decompressed as gzip'],
+  ['deflate', 'Open decompressed as raw deflate'],
+];
+
+/** Decompresses the selection into a new window. */
+async function decompressSelection(format) {
+  const sel = selection();
+  toast('Decompressing…');
+  try {
+    const r = await api.decompress(sel.start, sel.len, format);
+    const opened = `Opened ${r.size.toLocaleString()} bytes (${r.format}) in a new window`;
+    if (r.error) toast(`${opened}, incomplete: ${r.error}`, true);
+    else if (r.consumed < sel.len) toast(`${opened}; the last ${(sel.len - r.consumed).toLocaleString()} selected bytes are not part of the stream`);
+    else toast(opened);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+function hideMenu() {
+  $('ctxmenu').hidden = true;
+}
+
+function showMenu(x, y) {
+  const menu = $('ctxmenu');
+  const sel = selection();
+  const has = state.anchor !== null && sel.len > 1;
+  menu.replaceChildren();
+  for (const [format, label] of DECOMPRESS) {
+    const b = document.createElement('button');
+    b.setAttribute('role', 'menuitem');
+    b.textContent = `${label}${format === 'auto' ? ' (deflate, zlib, gzip)' : ''}`;
+    b.disabled = !has;
+    b.onclick = () => { hideMenu(); decompressSelection(format); };
+    menu.append(b);
+  }
+  if (!has) {
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = 'Select the compressed bytes first';
+    menu.prepend(hint);
+  }
+  menu.hidden = false;
+  // keep it inside the window
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(0, Math.min(x, innerWidth - r.width - 4))}px`;
+  menu.style.top = `${Math.max(0, Math.min(y, innerHeight - r.height - 4))}px`;
+  menu.querySelector('button:not(:disabled)')?.focus();
+}
+
+function initMenu() {
+  hexEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showMenu(e.clientX, e.clientY);
+  });
+  on('menu', ({ x, y }) => showMenu(x, y));
+  const menu = $('ctxmenu');
+  document.addEventListener('mousedown', (e) => { if (!menu.contains(e.target)) hideMenu(); }, true);
+  document.addEventListener('wheel', hideMenu, true);
+  window.addEventListener('blur', hideMenu);
+  menu.addEventListener('keydown', (e) => {
+    const items = [...menu.querySelectorAll('button:not(:disabled)')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); hideMenu(); hexEl.focus(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+  });
+}
+
 // ------------------------------------------------------------ cursor
 
 function moveCursor(to, extend) {
@@ -689,6 +763,8 @@ async function main() {
     else if (k === 'z') { e.preventDefault(); undoRedo(e.shiftKey); }
     else if (k === 'y') { e.preventDefault(); undoRedo(true); }
   });
+
+  initMenu();
 
   await listen('tauri://drag-drop', (e) => {
     const p = e.payload?.paths?.[0];

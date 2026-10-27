@@ -1237,6 +1237,7 @@ version = "0.2.0"
 dependencies = [
  "codepage",
  "encoding_rs",
+ "flate2",
  "serde",
  "serde_json",
  "tauri",

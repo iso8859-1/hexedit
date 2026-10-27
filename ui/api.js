@@ -11,6 +11,7 @@ export const api = {
   writeBytes: (offset, bytes, insert, coalesce) =>
     invoke('write_bytes', { offset, bytes: Array.from(bytes), insert, coalesce }),
   deleteBytes: (offset, len) => invoke('delete_bytes', { offset, len }),
+  decompress: (offset, len, format) => invoke('decompress', { offset, len, format }),
   undo: () => invoke('undo'),
   redo: () => invoke('redo'),
   find: (query, mode, encoding, littleEndian, from, backwards) =>
@@ -31,6 +32,7 @@ export const api = {
   themeOpenFolder: () => invoke('theme_open_folder'),
 };
 
+/** Events for this window only: a global listener would also hear the other windows. */
 export function listen(event, fn) {
-  return window.__TAURI__.event.listen(event, fn);
+  return window.__TAURI__.webviewWindow.getCurrentWebviewWindow().listen(event, fn);
 }

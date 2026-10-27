@@ -1,22 +1,35 @@
+mod compress;
 mod document;
 mod encodings;
 mod inspector;
 pub mod template;
 mod themes;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State, WindowEvent};
+use tauri::{AppHandle, Manager, State, WebviewWindow, WindowEvent};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use document::Document;
 use template::{Endian, Parsed, Root};
 
+/// One document per window, by window label.
 #[derive(Default)]
 struct AppState {
-    doc: Mutex<Document>,
+    docs: Mutex<HashMap<String, Arc<Mutex<Document>>>>,
+    /// numbers the labels of windows opened for decompressed data
+    next_window: AtomicU32,
+}
+
+impl AppState {
+    /// The document of `window`; a window without one starts with an empty document.
+    fn doc(&self, window: &WebviewWindow) -> Arc<Mutex<Document>> {
+        self.docs.lock().unwrap().entry(window.label().to_string()).or_default().clone()
+    }
 }
 
 #[derive(Serialize)]
@@ -39,11 +52,9 @@ struct EditResult {
 
 type CmdResult<T> = Result<T, String>;
 
-fn info(app: &AppHandle, doc: &Document) -> DocInfo {
+fn info(window: &WebviewWindow, doc: &Document) -> DocInfo {
     let dirty = doc.dirty();
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.set_title(&format!("{}{} — HexEdit", doc.name(), if dirty { " *" } else { "" }));
-    }
+    let _ = window.set_title(&format!("{}{} — HexEdit", doc.name(), if dirty { " *" } else { "" }));
     DocInfo {
         path: doc.path.as_ref().map(|p| p.to_string_lossy().into_owned()),
         name: doc.name(),
@@ -63,15 +74,17 @@ fn endian(little: bool) -> Endian {
 }
 
 /// Asks before discarding unsaved changes. Must not run on the main thread.
-fn confirm_discard(app: &AppHandle, state: &AppState) -> bool {
+fn confirm_discard(window: &WebviewWindow, state: &AppState) -> bool {
     let (dirty, name) = {
-        let doc = state.doc.lock().unwrap();
+        let doc = state.doc(window);
+        let doc = doc.lock().unwrap();
         (doc.dirty(), doc.name())
     };
     !dirty
-        || app
+        || window
             .dialog()
             .message(format!("\"{name}\" has unsaved changes. Discard them?"))
+            .parent(window)
             .title("Unsaved changes")
             .kind(MessageDialogKind::Warning)
             .buttons(MessageDialogButtons::OkCancelCustom("Discard".into(), "Cancel".into()))
@@ -81,36 +94,38 @@ fn confirm_discard(app: &AppHandle, state: &AppState) -> bool {
 // ---------------------------------------------------------------- document
 
 #[tauri::command]
-fn doc_info(app: AppHandle, state: State<AppState>) -> DocInfo {
-    info(&app, &state.doc.lock().unwrap())
+fn doc_info(window: WebviewWindow, state: State<AppState>) -> DocInfo {
+    info(&window, &state.doc(&window).lock().unwrap())
 }
 
 #[tauri::command]
-async fn open_file(app: AppHandle, state: State<'_, AppState>, path: Option<String>) -> CmdResult<Option<DocInfo>> {
-    if !confirm_discard(&app, &state) {
+async fn open_file(window: WebviewWindow, state: State<'_, AppState>, path: Option<String>) -> CmdResult<Option<DocInfo>> {
+    if !confirm_discard(&window, &state) {
         return Ok(None);
     }
     let path = match path {
         Some(p) => PathBuf::from(p),
-        None => match app.dialog().file().set_title("Open file").blocking_pick_file() {
+        None => match window.dialog().file().set_parent(&window).set_title("Open file").blocking_pick_file() {
             Some(p) => p.into_path().map_err(|e| e.to_string())?,
             None => return Ok(None),
         },
     };
     let doc = Document::open(&path).map_err(|e| format!("Cannot open {}: {e}", path.display()))?;
-    let mut cur = state.doc.lock().unwrap();
+    let cur = state.doc(&window);
+    let mut cur = cur.lock().unwrap();
     *cur = doc;
-    Ok(Some(info(&app, &cur)))
+    Ok(Some(info(&window, &cur)))
 }
 
 #[tauri::command]
-async fn new_file(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Option<DocInfo>> {
-    if !confirm_discard(&app, &state) {
+async fn new_file(window: WebviewWindow, state: State<'_, AppState>) -> CmdResult<Option<DocInfo>> {
+    if !confirm_discard(&window, &state) {
         return Ok(None);
     }
-    let mut cur = state.doc.lock().unwrap();
+    let cur = state.doc(&window);
+    let mut cur = cur.lock().unwrap();
     *cur = Document::default();
-    Ok(Some(info(&app, &cur)))
+    Ok(Some(info(&window, &cur)))
 }
 
 #[derive(Serialize)]
@@ -122,30 +137,33 @@ struct SaveResult {
 
 #[tauri::command]
 async fn save_file(
-    app: AppHandle,
+    window: WebviewWindow,
     state: State<'_, AppState>,
     save_as: bool,
     backup: bool,
 ) -> CmdResult<Option<SaveResult>> {
     let (existing, name) = {
-        let doc = state.doc.lock().unwrap();
+        let doc = state.doc(&window);
+        let doc = doc.lock().unwrap();
         (doc.path.clone(), doc.name())
     };
     let path = match existing {
         Some(p) if !save_as => p,
-        _ => match app.dialog().file().set_title("Save as").set_file_name(&name).blocking_save_file() {
+        _ => match window.dialog().file().set_parent(&window).set_title("Save as").set_file_name(&name).blocking_save_file() {
             Some(p) => p.into_path().map_err(|e| e.to_string())?,
             None => return Ok(None),
         },
     };
-    let mut doc = state.doc.lock().unwrap();
+    let doc = state.doc(&window);
+    let mut doc = doc.lock().unwrap();
     let bak = doc.save_to(&path, backup).map_err(|e| format!("Cannot save {}: {e}", path.display()))?;
-    Ok(Some(SaveResult { info: info(&app, &doc), backup: bak.map(|b| b.display().to_string()) }))
+    Ok(Some(SaveResult { info: info(&window, &doc), backup: bak.map(|b| b.display().to_string()) }))
 }
 
 #[tauri::command]
-fn read_bytes(state: State<AppState>, offset: u64, len: u64) -> tauri::ipc::Response {
-    let doc = state.doc.lock().unwrap();
+fn read_bytes(window: WebviewWindow, state: State<AppState>, offset: u64, len: u64) -> tauri::ipc::Response {
+    let doc = state.doc(&window);
+    let doc = doc.lock().unwrap();
     let start = (offset as usize).min(doc.data.len());
     let end = start.saturating_add(len as usize).min(doc.data.len());
     tauri::ipc::Response::new(doc.data[start..end].to_vec())
@@ -153,37 +171,41 @@ fn read_bytes(state: State<AppState>, offset: u64, len: u64) -> tauri::ipc::Resp
 
 #[tauri::command]
 fn write_bytes(
-    app: AppHandle,
+    window: WebviewWindow,
     state: State<AppState>,
     offset: u64,
     bytes: Vec<u8>,
     insert: bool,
     coalesce: bool,
 ) -> CmdResult<DocInfo> {
-    let mut doc = state.doc.lock().unwrap();
+    let doc = state.doc(&window);
+    let mut doc = doc.lock().unwrap();
     doc.write(offset as usize, &bytes, insert, coalesce)?;
-    Ok(info(&app, &doc))
+    Ok(info(&window, &doc))
 }
 
 #[tauri::command]
-fn delete_bytes(app: AppHandle, state: State<AppState>, offset: u64, len: u64) -> CmdResult<DocInfo> {
-    let mut doc = state.doc.lock().unwrap();
+fn delete_bytes(window: WebviewWindow, state: State<AppState>, offset: u64, len: u64) -> CmdResult<DocInfo> {
+    let doc = state.doc(&window);
+    let mut doc = doc.lock().unwrap();
     doc.delete(offset as usize, len as usize)?;
-    Ok(info(&app, &doc))
+    Ok(info(&window, &doc))
 }
 
 #[tauri::command]
-fn undo(app: AppHandle, state: State<AppState>) -> EditResult {
-    let mut doc = state.doc.lock().unwrap();
+fn undo(window: WebviewWindow, state: State<AppState>) -> EditResult {
+    let doc = state.doc(&window);
+    let mut doc = doc.lock().unwrap();
     let t = doc.undo();
-    EditResult { info: info(&app, &doc), offset: t.as_ref().map(|t| t.offset), len: t.map_or(0, |t| t.len) }
+    EditResult { info: info(&window, &doc), offset: t.as_ref().map(|t| t.offset), len: t.map_or(0, |t| t.len) }
 }
 
 #[tauri::command]
-fn redo(app: AppHandle, state: State<AppState>) -> EditResult {
-    let mut doc = state.doc.lock().unwrap();
+fn redo(window: WebviewWindow, state: State<AppState>) -> EditResult {
+    let doc = state.doc(&window);
+    let mut doc = doc.lock().unwrap();
     let t = doc.redo();
-    EditResult { info: info(&app, &doc), offset: t.as_ref().map(|t| t.offset), len: t.map_or(0, |t| t.len) }
+    EditResult { info: info(&window, &doc), offset: t.as_ref().map(|t| t.offset), len: t.map_or(0, |t| t.len) }
 }
 
 #[derive(Serialize)]
@@ -193,7 +215,9 @@ struct FindResult {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn find(
+    window: WebviewWindow,
     state: State<AppState>,
     query: String,
     mode: String,
@@ -203,7 +227,8 @@ fn find(
     backwards: bool,
 ) -> CmdResult<Option<FindResult>> {
     let pat = encodings::search_pattern(&query, &mode, &encoding, little_endian)?;
-    let doc = state.doc.lock().unwrap();
+    let doc = state.doc(&window);
+    let doc = doc.lock().unwrap();
     let data = &doc.data;
     let n = pat.len();
     if n == 0 || n > data.len() {
@@ -218,17 +243,66 @@ fn find(
     Ok(hit.map(|o| FindResult { offset: o as u64, len: n as u64 }))
 }
 
+// -------------------------------------------------------------- decompress
+
+#[derive(Serialize)]
+struct DecompressResult {
+    #[serde(flatten)]
+    inflated: compress::Inflated,
+    size: u64,
+}
+
+/// Decompresses a range of the window's document and opens the result in a
+/// new window, as an unsaved document.
+#[tauri::command]
+async fn decompress(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    offset: u64,
+    len: u64,
+    format: String,
+) -> CmdResult<DecompressResult> {
+    let format = compress::Format::parse(&format)?;
+    let (input, source) = {
+        let doc = state.doc(&window);
+        let doc = doc.lock().unwrap();
+        let start = (offset as usize).min(doc.data.len());
+        let end = start.saturating_add(len as usize).min(doc.data.len());
+        (doc.data[start..end].to_vec(), doc.name())
+    };
+    let mut inflated = compress::inflate(&input, format, compress::MAX_OUTPUT)?;
+    let title = format!("{source} @ 0x{offset:X} ({})", inflated.format);
+    let size = inflated.data.len() as u64;
+
+    let app = window.app_handle();
+    let label = format!("doc-{}", state.next_window.fetch_add(1, Ordering::Relaxed) + 1);
+    let doc = Document::from_bytes(std::mem::take(&mut inflated.data), title.clone());
+    state.docs.lock().unwrap().insert(label.clone(), Arc::new(Mutex::new(doc)));
+    // same settings as the main window (tauri.conf.json), so it shares the page's storage
+    let mut config = app.config().app.windows.first().cloned().ok_or("no window configuration")?;
+    config.label = label.clone();
+    config.title = format!("{title} — HexEdit");
+    let built = tauri::WebviewWindowBuilder::from_config(app, &config).and_then(|b| b.build());
+    if let Err(e) = built {
+        state.docs.lock().unwrap().remove(&label);
+        return Err(format!("Cannot open a window: {e}"));
+    }
+    Ok(DecompressResult { inflated, size })
+}
+
 // --------------------------------------------------------------- inspector
 
 #[tauri::command]
 fn inspect(
+    window: WebviewWindow,
     state: State<AppState>,
     offset: u64,
     sel_len: u64,
     little_endian: bool,
     encoding: String,
 ) -> Vec<inspector::Entry> {
-    let doc = state.doc.lock().unwrap();
+    let doc = state.doc(&window);
+    let doc = doc.lock().unwrap();
     let start = (offset as usize).min(doc.data.len());
     let window = (sel_len as usize).clamp(1024, 1 << 20);
     let end = start.saturating_add(window).min(doc.data.len());
@@ -237,7 +311,7 @@ fn inspect(
 
 #[tauri::command]
 fn inspector_write(
-    app: AppHandle,
+    window: WebviewWindow,
     state: State<AppState>,
     offset: u64,
     key: String,
@@ -245,9 +319,10 @@ fn inspector_write(
     little_endian: bool,
 ) -> CmdResult<DocInfo> {
     let bytes = inspector::encode(&key, &text, little_endian)?;
-    let mut doc = state.doc.lock().unwrap();
+    let doc = state.doc(&window);
+    let mut doc = doc.lock().unwrap();
     doc.write(offset as usize, &bytes, false, false)?;
-    Ok(info(&app, &doc))
+    Ok(info(&window, &doc))
 }
 
 #[tauri::command]
@@ -293,6 +368,7 @@ fn template_parse(source: String) -> ParseResult {
 
 #[tauri::command]
 fn template_apply(
+    window: WebviewWindow,
     state: State<AppState>,
     source: String,
     root: Option<String>,
@@ -307,7 +383,8 @@ fn template_apply(
         None => Root::Instances,
     };
     let opts = template::Options { endian: endian(little_endian), encoding: encodings::lookup(&encoding) };
-    let doc = state.doc.lock().unwrap();
+    let doc = state.doc(&window);
+    let doc = doc.lock().unwrap();
     t.apply(&doc.data, root, offset, &opts)
 }
 
@@ -318,10 +395,11 @@ struct TemplateFile {
 }
 
 #[tauri::command]
-async fn template_open(app: AppHandle) -> CmdResult<Option<TemplateFile>> {
-    let Some(p) = app
+async fn template_open(window: WebviewWindow) -> CmdResult<Option<TemplateFile>> {
+    let Some(p) = window
         .dialog()
         .file()
+        .set_parent(&window)
         .set_title("Open template")
         .add_filter("Templates", &["h", "c", "hpp", "hbt", "txt"])
         .add_filter("C templates", &["h", "c", "hpp", "txt"])
@@ -337,14 +415,15 @@ async fn template_open(app: AppHandle) -> CmdResult<Option<TemplateFile>> {
 }
 
 #[tauri::command]
-async fn template_save(app: AppHandle, path: Option<String>, text: String) -> CmdResult<Option<String>> {
+async fn template_save(window: WebviewWindow, path: Option<String>, text: String) -> CmdResult<Option<String>> {
     let blocks = matches!(template::blocks::detect(&text), Ok(true));
     let (filter, ext) = if blocks { ("Block templates", "hbt") } else { ("C templates", "h") };
     let path = match path {
         Some(p) => PathBuf::from(p),
-        None => match app
+        None => match window
             .dialog()
             .file()
+            .set_parent(&window)
             .set_title("Save template")
             .add_filter(filter, &[ext])
             .set_file_name(format!("template.{ext}"))
@@ -431,28 +510,38 @@ pub fn run() {
             if let Some(arg) = std::env::args_os().nth(1) {
                 let path = PathBuf::from(arg);
                 match Document::open(&path) {
-                    Ok(doc) => *app.state::<AppState>().doc.lock().unwrap() = doc,
+                    Ok(doc) => {
+                        app.state::<AppState>().docs.lock().unwrap().insert("main".into(), Arc::new(Mutex::new(doc)));
+                    }
                     Err(e) => eprintln!("cannot open {}: {e}", path.display()),
                 }
             }
             Ok(())
         })
         .on_window_event(|window, event| {
+            let state = window.state::<AppState>();
+            if let WindowEvent::Destroyed = event {
+                state.docs.lock().unwrap().remove(window.label());
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
-                let state = window.state::<AppState>();
-                let (dirty, name) = {
-                    let doc = state.doc.lock().unwrap();
-                    (doc.dirty(), doc.name())
+                let doc = state.docs.lock().unwrap().get(window.label()).cloned();
+                let (dirty, name) = match doc {
+                    Some(doc) => {
+                        let doc = doc.lock().unwrap();
+                        (doc.dirty(), doc.name())
+                    }
+                    None => (false, String::new()),
                 };
                 if dirty {
                     api.prevent_close();
                     let w = window.clone();
                     window
                         .dialog()
-                        .message(format!("\"{name}\" has unsaved changes. Quit anyway?"))
+                        .message(format!("\"{name}\" has unsaved changes. Close anyway?"))
+                        .parent(window)
                         .title("Unsaved changes")
                         .kind(MessageDialogKind::Warning)
-                        .buttons(MessageDialogButtons::OkCancelCustom("Quit".into(), "Cancel".into()))
+                        .buttons(MessageDialogButtons::OkCancelCustom("Close".into(), "Cancel".into()))
                         .show(move |quit| {
                             if quit {
                                 let _ = w.destroy();
@@ -464,6 +553,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             doc_info,
             open_file,
+            decompress,
             new_file,
             save_file,
             read_bytes,
