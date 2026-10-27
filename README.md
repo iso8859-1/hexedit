@@ -4,7 +4,8 @@ A hex editor built with Rust and [Tauri 2](https://tauri.app). It has a data ins
 
 - **Hex view**: virtualized, so multi-GB files scroll smoothly. Hex and text panes, overwrite/insert mode
   (`Insert`), selection with mouse or Shift+keys, copy/paste as hex or text, undo/redo, go to (`Ctrl+G`),
-  and find for hex bytes, code page text, UTF-8, or UTF-16 (`Ctrl+F`, `F3`).
+  and find for hex bytes, code page text, UTF-8, or UTF-16 (`Ctrl+F`, `F3`). **Recent…** next to Open
+  lists the last 10 files opened or saved.
 - **Data inspector**: decodes the bytes at the cursor as binary, (u)int8/16/24/32/64, float16/32/64,
   (S/U)LEB128, characters and strings in the selected code page, UTF-8 and UTF-16, Unix time (32/64),
   FILETIME, DOS date/time, OLE date, and GUID. Double-click a numeric value to edit it. Byte order and

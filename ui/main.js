@@ -50,6 +50,7 @@ function edit(fn) {
 
 function docLoaded(info) {
   setInfo(info);
+  remember(info.path);
   state.cursor = 0;
   state.anchor = null;
   state.nibble = 0;
@@ -69,6 +70,70 @@ async function openFile(path = null) {
   }
 }
 
+// ------------------------------------------------------------ recent files
+
+const RECENT_MAX = 10;
+const RECENT_CLEAR = '\u0000clear';
+// Windows paths are case-insensitive
+const samePath = (a, b) => a.toLowerCase() === b.toLowerCase();
+
+/** Moves `path` to the top of the recent files list. */
+function remember(path) {
+  if (!path) return;
+  const list = load('ui.recent', []).filter((p) => !samePath(p, path));
+  store('ui.recent', [path, ...list].slice(0, RECENT_MAX));
+  fillRecentMenu();
+}
+
+function forget(path) {
+  store('ui.recent', load('ui.recent', []).filter((p) => !samePath(p, path)));
+  fillRecentMenu();
+}
+
+function fillRecentMenu() {
+  const sel = $('sel-recent');
+  const list = load('ui.recent', []);
+  sel.replaceChildren(new Option('Recent…', ''));
+  for (const [i, p] of list.entries()) {
+    const parts = p.split(/[\\/]/);
+    const name = parts.pop();
+    const o = new Option(`${i < 9 ? `${i + 1}  ` : ''}${name}  —  ${parts.join('\\')}`, p);
+    o.title = p;
+    sel.append(o);
+  }
+  if (list.length) {
+    const actions = document.createElement('optgroup');
+    actions.label = '──────────';
+    actions.append(new Option('Clear list', RECENT_CLEAR));
+    sel.append(actions);
+  }
+  sel.disabled = !list.length;
+  sel.title = list.length ? 'Recent files' : 'No recent files';
+}
+
+function initRecent() {
+  const sel = $('sel-recent');
+  fillRecentMenu();
+  sel.addEventListener('change', async () => {
+    const path = sel.value;
+    sel.value = '';
+    hexEl.focus();
+    if (path === RECENT_CLEAR) {
+      store('ui.recent', []);
+      fillRecentMenu();
+    } else if (path) {
+      try {
+        const info = await api.openFile(path);
+        if (info) docLoaded(info);
+      } catch (e) {
+        // usually moved or deleted: drop it so the list stays useful
+        forget(path);
+        toast(`${e} (removed from recent files)`, true);
+      }
+    }
+  });
+}
+
 async function newFile() {
   try {
     const info = await api.newFile();
@@ -84,6 +149,7 @@ async function saveFile(saveAs) {
     const r = await api.saveFile(saveAs, $('opt-backup').checked);
     if (r) {
       setInfo(r.info);
+      remember(r.info.path);
       const backup = r.backup ? ` (original kept as ${r.backup.split(/[\\/]/).pop()})` : '';
       toast(`Saved ${r.info.path}${backup}`);
     }
@@ -567,7 +633,9 @@ async function main() {
   initBackup();
   await initSettings();
   view = new HexView();
+  initRecent();
   setInfo(await api.docInfo());
+  remember(state.info.path);  // a file given on the command line
   view.layoutChanged();
 
   new Inspector({ edit, toast });
