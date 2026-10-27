@@ -5,7 +5,9 @@ A hex editor built with Rust and [Tauri 2](https://tauri.app). It has a data ins
 - **Hex view**: virtualized, so multi-GB files scroll smoothly. Hex and text panes, overwrite/insert mode
   (`Insert`), selection with mouse or Shift+keys, copy/paste as hex or text, undo/redo, go to (`Ctrl+G`),
   and find for hex bytes, code page text, UTF-8, or UTF-16 (`Ctrl+F`, `F3`). **Recent…** next to Open
-  lists the last 10 files opened or saved.
+  lists the last 10 files opened or saved. **← →** in the toolbar (`Ctrl+−`, `Ctrl+Shift+−`, or the mouse's
+  back and forward buttons) return to earlier locations: Go to, find results, followed links, and cursor
+  moves that leave the visible part of the file. **▾** lists them to jump to any one.
 - **Compressed data**: right-click a selection (or a template tree row, e.g. a ZIP entry's data) and
   choose **Open decompressed** to unpack deflate, zlib, gzip, zstd or LZ4 (frame format) data into a
   new window; the format is detected from its header, or picked in the menu. The window

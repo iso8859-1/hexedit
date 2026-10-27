@@ -194,10 +194,11 @@ export class TemplatePanel {
 
   // ------------------------------------------------------------- links
 
-  select(offset, len) {
+  /** Selects bytes in the hex view; `jump` and `force` are for its navigation history. */
+  select(offset, len, jump = null, force = false) {
     this.selecting = true;
     try {
-      this.selectRange(offset, len);
+      this.selectRange(offset, len, { jump, force });
     } finally {
       this.selecting = false;
     }
@@ -223,7 +224,7 @@ export class TemplatePanel {
     this.backBtn.disabled = false;
     this.offsetIn.value = `0x${hex(link.offset, 1)}`;
     store('tpl.offset', this.offsetIn.value);
-    this.select(link.offset, 0);
+    this.select(link.offset, 0, `Link to ${link.type}`, true);
     this.apply({ expanded: new Set(), scroll: 0 }, link.type);
   }
 
@@ -234,7 +235,7 @@ export class TemplatePanel {
     this.setRoot(h.root);
     this.offsetIn.value = h.offset;
     store('tpl.offset', h.offset);
-    this.select(h.cursor, 0);
+    this.select(h.cursor, 0, 'Template back', true);
     this.apply({ expanded: h.expanded, scroll: h.scroll });
   }
 
@@ -437,7 +438,7 @@ export class TemplatePanel {
       this.activeRow?.classList.remove('active');
       row.classList.add('active');
       this.activeRow = row;
-      if (node.size > 0) this.select(node.offset, node.size);
+      if (node.size > 0) this.select(node.offset, node.size, `Field ${path.replaceAll('/', '.')}`);
     });
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();

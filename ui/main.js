@@ -49,6 +49,7 @@ function edit(fn) {
 }
 
 function docLoaded(info) {
+  navReset();
   setInfo(info);
   remember(info.path);
   state.cursor = 0;
@@ -203,24 +204,34 @@ function hideMenu() {
   $('ctxmenu').hidden = true;
 }
 
-function showMenu(x, y) {
+/**
+ * Shows a menu at x, y. Items are {label, action} with optional `disabled`,
+ * `current` (highlighted, not clickable) and `detail` (muted text on the
+ * right); `hint` is an optional first line.
+ */
+function openMenu(x, y, items, hint = null) {
   const menu = $('ctxmenu');
-  const sel = selection();
-  const has = state.anchor !== null && sel.len > 1;
   menu.replaceChildren();
-  for (const [format, label] of DECOMPRESS) {
+  if (hint) {
+    const h = document.createElement('div');
+    h.className = 'hint';
+    h.textContent = hint;
+    menu.append(h);
+  }
+  for (const item of items) {
     const b = document.createElement('button');
     b.setAttribute('role', 'menuitem');
-    b.textContent = `${label}${format === 'auto' ? ' (detect format)' : ''}`;
-    b.disabled = !has;
-    b.onclick = () => { hideMenu(); decompressSelection(format); };
+    b.textContent = item.label;
+    if (item.detail) {
+      const d = document.createElement('span');
+      d.className = 'detail';
+      d.textContent = item.detail;
+      b.append(d);
+    }
+    b.disabled = item.disabled || item.current;
+    b.classList.toggle('current', !!item.current);
+    b.onclick = () => { hideMenu(); item.action(); };
     menu.append(b);
-  }
-  if (!has) {
-    const hint = document.createElement('div');
-    hint.className = 'hint';
-    hint.textContent = 'Select the compressed bytes first';
-    menu.prepend(hint);
   }
   menu.hidden = false;
   // keep it inside the window
@@ -230,12 +241,22 @@ function showMenu(x, y) {
   menu.querySelector('button:not(:disabled)')?.focus();
 }
 
+function showDecompressMenu(x, y) {
+  const has = state.anchor !== null && selection().len > 1;
+  const items = DECOMPRESS.map(([format, label]) => ({
+    label: `${label}${format === 'auto' ? ' (detect format)' : ''}`,
+    disabled: !has,
+    action: () => decompressSelection(format),
+  }));
+  openMenu(x, y, items, has ? null : 'Select the compressed bytes first');
+}
+
 function initMenu() {
   hexEl.addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    showMenu(e.clientX, e.clientY);
+    showDecompressMenu(e.clientX, e.clientY);
   });
-  on('menu', ({ x, y }) => showMenu(x, y));
+  on('menu', ({ x, y }) => showDecompressMenu(x, y));
   const menu = $('ctxmenu');
   document.addEventListener('mousedown', (e) => { if (!menu.contains(e.target)) hideMenu(); }, true);
   document.addEventListener('wheel', hideMenu, true);
@@ -247,6 +268,117 @@ function initMenu() {
     else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
   });
+}
+
+// ------------------------------------------------------ navigation history
+
+// Locations to go back and forward to, as in a browser. Go to, find results and
+// followed links are always recorded; other cursor moves only when they leave
+// the part of the file that was visible.
+const NAV_MAX = 50;
+const nav = {
+  back: [],       // older locations, the most recent last
+  forward: [],    // locations left by going back, the nearest last
+  here: null,     // {cursor, anchor, label}: the current location
+  pending: null,  // {label, force} for the cursor move about to happen
+  moving: false,  // moving through the history itself
+};
+
+/** Describes the next cursor move for the history; `force` records it whatever the distance. */
+function navNote(label, force = false) {
+  nav.pending = { label, force };
+}
+
+function onNavCursor() {
+  const p = nav.pending;
+  nav.pending = null;
+  const prev = nav.here;
+  const now = { cursor: state.cursor, anchor: state.anchor };
+  if (nav.moving || !prev) {
+    nav.here = { ...now, label: prev?.label ?? 'Start' };
+  } else if (now.cursor !== prev.cursor
+    && (p?.force || Math.abs(now.cursor - prev.cursor) >= view.visibleRows * state.bpr)) {
+    nav.back.push(prev);
+    if (nav.back.length > NAV_MAX) nav.back.shift();
+    nav.forward = [];
+    nav.here = { ...now, label: p?.label ?? 'Cursor' };
+  } else {
+    // a small move: still the same place, now with this selection
+    nav.here = { ...now, label: p?.label ?? prev.label };
+  }
+  updateNavButtons();
+}
+
+/** Goes `n` steps back (negative) or forward (positive). */
+function navGo(n) {
+  const from = n < 0 ? nav.back : nav.forward;
+  const to = n < 0 ? nav.forward : nav.back;
+  if (n === 0 || from.length < Math.abs(n)) return;
+  let loc = nav.here;
+  for (let i = 0; i < Math.abs(n); i++) {
+    to.push(loc);
+    loc = from.pop();
+  }
+  nav.here = loc;
+  // edits since then may have made the file shorter
+  state.cursor = Math.min(loc.cursor, state.size);
+  state.anchor = loc.anchor === null ? null : Math.min(loc.anchor, state.size);
+  state.nibble = 0;
+  nav.moving = true;
+  try {
+    view.scrollTo(state.cursor, true);
+    emit('cursor');
+  } finally {
+    nav.moving = false;
+  }
+  hexEl.focus();
+}
+
+function navReset() {
+  nav.back = [];
+  nav.forward = [];
+  nav.here = null;
+}
+
+function updateNavButtons() {
+  $('btn-back').disabled = !nav.back.length;
+  $('btn-forward').disabled = !nav.forward.length;
+  $('btn-history').disabled = !nav.back.length && !nav.forward.length;
+}
+
+/** The visited locations, newest at the top, the current one highlighted. */
+function showHistoryMenu() {
+  const entry = (loc, steps) => {
+    const len = loc.anchor === null ? 0 : Math.abs(loc.cursor - loc.anchor) + 1;
+    return {
+      label: `0x${hex(loc.cursor)}  ${loc.label}`,
+      detail: len > 1 ? `${len.toLocaleString()} bytes` : '',
+      current: steps === 0,
+      action: () => navGo(steps),
+    };
+  };
+  const items = [
+    ...nav.forward.map((loc, i) => entry(loc, nav.forward.length - i)),
+    entry(nav.here, 0),
+    ...nav.back.map((loc, i) => entry(loc, i - nav.back.length)).reverse(),
+  ];
+  const r = $('btn-history').getBoundingClientRect();
+  openMenu(r.left, r.bottom + 2, items);
+}
+
+function initNav() {
+  on('cursor', onNavCursor);
+  $('btn-back').onclick = () => navGo(-1);
+  $('btn-forward').onclick = () => navGo(1);
+  $('btn-history').onclick = showHistoryMenu;
+  // the mouse's back and forward buttons
+  hexEl.addEventListener('mouseup', (e) => {
+    if (e.button === 3 || e.button === 4) {
+      e.preventDefault();
+      navGo(e.button === 3 ? -1 : 1);
+    }
+  });
+  updateNavButtons();
 }
 
 // ------------------------------------------------------------ cursor
@@ -264,8 +396,13 @@ function moveCursor(to, extend) {
   emit('cursor');
 }
 
-/** Selects `len` bytes from `start`, with the cursor on the last byte, or on the first with `cursorAtStart`. */
-function selectRange(start, len, cursorAtStart = false) {
+/**
+ * Selects `len` bytes from `start`, with the cursor on the last byte, or on the
+ * first with `cursorAtStart`. `jump` names the location for the navigation
+ * history, and `force` records it however close it is.
+ */
+function selectRange(start, len, { cursorAtStart = false, jump = null, force = false } = {}) {
+  if (jump) navNote(jump, force);
   const end = Math.max(start, start + len - 1);
   state.anchor = cursorAtStart ? end : start;
   state.cursor = cursorAtStart ? start : end;
@@ -507,7 +644,7 @@ async function findNext(backwards) {
       return;
     }
     msg.textContent = `Found at 0x${hex(r.offset)}${wrapped ? ' (wrapped)' : ''}`;
-    selectRange(r.offset, r.len, true);
+    selectRange(r.offset, r.len, { cursorAtStart: true, jump: `Find ${q}`, force: true });
     view.scrollTo(r.offset, true);
   } catch (e) {
     msg.textContent = String(e);
@@ -529,6 +666,7 @@ function showGoto() {
       toast(`Invalid offset '${input.value}'`, true);
       return;
     }
+    navNote(`Go to ${input.value.trim()}`, true);
     moveCursor(v, false);
     view.scrollTo(v, true);
   };
@@ -763,12 +901,18 @@ async function main() {
     else if (k === 's') { e.preventDefault(); saveFile(e.shiftKey); }
     else if (k === 'g') { e.preventDefault(); showGoto(); }
     else if (k === 'f') { e.preventDefault(); showFind(); }
+    else if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') {
+      // Ctrl+- / Ctrl+Shift+- as in Visual Studio; this also keeps WebView2 from zooming
+      e.preventDefault();
+      navGo(e.shiftKey ? 1 : -1);
+    }
     else if (inField) return;
     else if (k === 'z') { e.preventDefault(); undoRedo(e.shiftKey); }
     else if (k === 'y') { e.preventDefault(); undoRedo(true); }
   });
 
   initMenu();
+  initNav();
 
   await listen('tauri://drag-drop', (e) => {
     const p = e.payload?.paths?.[0];
