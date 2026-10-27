@@ -113,7 +113,7 @@ main { flex: 1; display: flex; min-height: 0; }
   flex: none;
   padding-right: 14px;
 }
-.hexrow .off { width: 11ch; color: var(--offset); flex: none; }
+.hexrow .off { width: calc((var(--off-digits, 8) + 3) * 1ch); color: var(--offset); flex: none; }
 .hexrow .hex { display: flex; flex: none; margin-right: 2ch; }
 .hexrow .txt { display: flex; flex: none; }
 

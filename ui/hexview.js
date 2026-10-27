@@ -236,6 +236,8 @@ export class HexView {
     const colors = this.colors(start, end);
     const table = state.charTable;
     const digits = this.offsetDigits;
+    // the offset column (rows and header) widens with the digits, see style.css
+    this.el.style.setProperty('--off-digits', digits);
     const curHex = state.pane === 'hex' ? ' act' : '';
     const curTxt = state.pane === 'text' ? ' act' : '';
 
