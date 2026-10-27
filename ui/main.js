@@ -180,6 +180,8 @@ const DECOMPRESS = [
   ['zlib', 'Open decompressed as zlib'],
   ['gzip', 'Open decompressed as gzip'],
   ['deflate', 'Open decompressed as raw deflate'],
+  ['zstd', 'Open decompressed as zstd'],
+  ['lz4', 'Open decompressed as LZ4 frame'],
 ];
 
 /** Decompresses the selection into a new window. */
@@ -209,7 +211,7 @@ function showMenu(x, y) {
   for (const [format, label] of DECOMPRESS) {
     const b = document.createElement('button');
     b.setAttribute('role', 'menuitem');
-    b.textContent = `${label}${format === 'auto' ? ' (deflate, zlib, gzip)' : ''}`;
+    b.textContent = `${label}${format === 'auto' ? ' (detect format)' : ''}`;
     b.disabled = !has;
     b.onclick = () => { hideMenu(); decompressSelection(format); };
     menu.append(b);
