@@ -26,6 +26,9 @@ pub const STANDARD: &[(&str, &str)] = &[
     ("light.toml", LIGHT),
     ("dark.toml", DARK),
     ("solarized-dark.toml", include_str!("../../themes/solarized-dark.toml")),
+    ("light-high-contrast.toml", include_str!("../../themes/light-high-contrast.toml")),
+    ("dark-high-contrast.toml", include_str!("../../themes/dark-high-contrast.toml")),
+    ("solarized-dark-high-contrast.toml", include_str!("../../themes/solarized-dark-high-contrast.toml")),
 ];
 
 /// Lists the standard files already installed once, so deleted ones stay deleted
@@ -240,14 +243,24 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         install_standard(&dir).unwrap();
         let names = |l: &ThemeList| l.themes.iter().map(|t| t.name.clone()).collect::<Vec<_>>();
-        assert_eq!(names(&load(&dir)), ["Dark", "Light", "Solarized Dark"]);
+        assert_eq!(
+            names(&load(&dir)),
+            [
+                "Dark",
+                "Dark High Contrast",
+                "Light",
+                "Light High Contrast",
+                "Solarized Dark",
+                "Solarized Dark High Contrast"
+            ]
+        );
 
         fs::write(dir.join("my-dark.toml"), "name = \"dark\"\nbase = \"dark\"\n[colors]\nbg = \"#000\"").unwrap();
         fs::write(dir.join("b.toml"), "name = \"Broken").unwrap();
         fs::write(dir.join("notes.txt"), "ignored").unwrap();
         let l = load(&dir);
         // my-dark.toml sorts after dark.toml and replaces its theme
-        assert_eq!(names(&l), ["dark", "Light", "Solarized Dark"]);
+        assert_eq!(names(&l)[..3], ["dark", "Dark High Contrast", "Light"]);
         assert_eq!(l.themes[0].colors, BTreeMap::from([("bg".to_string(), "#000".to_string())]));
         assert_eq!(l.warnings.len(), 2, "{:?}", l.warnings);
         assert!(l.warnings[0].starts_with("b.toml: "));
@@ -267,6 +280,18 @@ mod tests {
         fs::remove_file(dir.join("light.toml")).unwrap();
         install_standard(&dir).unwrap();
         assert!(!dir.join("light.toml").exists());
+
+        // an update adds the standard themes that are new since the last install, and only those
+        for (file, _) in STANDARD {
+            let _ = fs::remove_file(dir.join(file));
+        }
+        fs::write(dir.join(INSTALLED_LIST), "light.toml
+dark.toml
+solarized-dark.toml
+").unwrap();
+        install_standard(&dir).unwrap();
+        assert!(!dir.join("light.toml").exists() && dir.join("light-high-contrast.toml").exists());
+        assert_eq!(fs::read_to_string(dir.join(INSTALLED_LIST)).unwrap().lines().count(), STANDARD.len());
 
         // without files there are no themes, only the fallback palettes
         fs::remove_dir_all(&dir).unwrap();

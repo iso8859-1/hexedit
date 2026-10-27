@@ -20,7 +20,10 @@ On Windows this is usually `C:\Users\<you>\AppData\Roaming\dev.hexedit.app\theme
 **Open themes folder…** in the Theme menu to open it in Explorer.
 
 On the first start, HexEdit creates the folder and installs its standard themes there: `light.toml`,
-`dark.toml` and `solarized-dark.toml`. Each standard theme is installed only once. The hidden file
+`dark.toml` and `solarized-dark.toml`, plus a high-contrast version of each (`light-high-contrast.toml`,
+`dark-high-contrast.toml`, `solarized-dark-high-contrast.toml`). The high-contrast themes keep text
+at a contrast ratio of at least 7:1 (WCAG AAA) and 00 bytes and secondary text at 4.5:1 or more.
+Each standard theme is installed only once. The hidden file
 `.installed` in the folder records which ones were installed, so:
 
 - a standard theme you delete stays deleted,
