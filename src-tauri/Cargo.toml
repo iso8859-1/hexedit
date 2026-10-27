@@ -1,6 +1,6 @@
 [package]
 name = "hexedit"
-version = "0.3.1"
+version = "0.4.0"
 description = "Hex editor with data inspector and C-struct templates"
 license = "MIT"
 repository = "https://github.com/iso8859-1/hexedit"
