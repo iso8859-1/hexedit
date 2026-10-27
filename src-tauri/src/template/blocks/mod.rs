@@ -244,6 +244,8 @@ pub struct Section {
     pub name: String,
     /// placement relative to the start of the block
     pub at: Option<Expr>,
+    /// for a section placed before the block start (constant negative `@`), the distance to it
+    pub before: Option<u64>,
     pub kind: SectionKind,
     pub pos: Pos,
 }
@@ -255,13 +257,21 @@ pub struct FrameDef {
     pub align_expr: Option<Expr>,
     pub align: u64,
     pub sections: Vec<Section>,
+    /// how far the sections before the block start reach back from it
+    pub prefix: u64,
     pub pos: Pos,
 }
 
 impl FrameDef {
-    /// The field sections before the first slot or open section, which dispatch decodes (7.3).
-    pub fn leading(&self) -> usize {
-        self.sections.iter().position(|s| !matches!(s.kind, SectionKind::Fields(_))).unwrap_or(self.sections.len())
+    /// The field sections after the sections before the block start and before the first slot or
+    /// open section, which dispatch decodes (7.3).
+    pub fn leading(&self) -> std::ops::Range<usize> {
+        let from = self.sections.iter().position(|s| s.before.is_none()).unwrap_or(self.sections.len());
+        let to = self.sections[from..]
+            .iter()
+            .position(|s| !matches!(s.kind, SectionKind::Fields(_)))
+            .map_or(self.sections.len(), |i| from + i);
+        from..to
     }
 }
 

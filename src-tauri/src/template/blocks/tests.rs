@@ -534,3 +534,61 @@ fn bundled_blf() {
     let n = apply(&t, &inner.data, Root::ByMagic, 0, &opts()).unwrap();
     assert_eq!(n.ty, "CanMessage");
 }
+
+#[test]
+fn sections_before_the_block_start() {
+    // DT is preceded by an 8-byte recovery link that its length does not count
+    let src = r###"#lang blocks 1
+frame Plain(magic) align 8 {
+    header { id: ascii(4) where id == magic, length: u32 }
+    data: size(length - 8)
+}
+frame Recovered(magic) align 8 {
+    recovery: [u64; 1] @ -8
+    header { id: ascii(4) where id == magic, length: u32 }
+    data: size(length - 8)
+}
+block HD: Plain("##HD") { data { first: u64 } }
+block DT: Recovered("##DT") {
+    recovery { link: -> HD | DT }
+    data { records: [u8; ..] }
+}
+"###;
+    let mut d = Vec::new();
+    d.extend(b"##HD");
+    d.extend(16u32.to_le_bytes());
+    d.extend(24u64.to_le_bytes()); // HD at 0..16, DT's recovery link at 16, its ID at 24
+    d.extend(0u64.to_le_bytes());
+    d.extend(b"##DT");
+    d.extend(12u32.to_le_bytes());
+    d.extend(b"abcd");
+
+    // a link points at the ID; the block includes the recovery link before it
+    let dt = run(src, ty("DT | HD"), 24, &d);
+    assert_eq!(dt.dispatched.as_deref(), Some("DT"));
+    assert!(dt.error.is_none(), "{:?}", dt.error);
+    assert_eq!((dt.offset, dt.size), (16, 20));
+    let rec = child(&dt, "recovery");
+    assert_eq!((rec.offset, rec.size), (16, 8));
+    assert!(path(&dt, "recovery/link").link.is_none()); // 0 is null
+    assert_eq!(child(&dt, "header").offset, 24);
+    assert_eq!(path(&dt, "data/records").offset, 32);
+    assert_eq!(dt.children.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["recovery", "header", "data"]);
+
+    // "Next block" after HD is the recovery link; (by magic) finds the DT behind it
+    let hd = run(src, ty("HD"), 0, &d);
+    assert_eq!(hd.next.as_ref().unwrap().offset, 16);
+    let m = run(src, Root::ByMagic, 16, &d);
+    assert_eq!((m.ty.as_str(), m.offset), ("DT", 16));
+    assert_eq!(child(&m, "header").offset, 24);
+    let m = run(src, Root::ByMagic, 24, &d);
+    assert_eq!((m.ty.as_str(), m.offset), ("DT", 16));
+
+    // no room for the recovery link before the start of the file
+    let at0 = run(src, ty("DT"), 0, &d);
+    assert_eq!(child(&at0, "recovery").error.as_deref(), Some("offset -8 is before the start of the file"));
+
+    // such sections must come first
+    let e = err("#lang blocks 1\nframe F { header { id: u32 }\n back: [u64; 1] @ -8 }\nblock B: F { }\n");
+    assert!(e.to_string().contains("must come before the other sections"), "{e}");
+}

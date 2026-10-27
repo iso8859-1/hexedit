@@ -316,6 +316,25 @@ A frame describes the layout shared by a family of blocks. It consists of named 
 declaration order. Each section starts where the previous section ended, or at `@ expr` relative to
 the start of the block. Section names must be unique within the frame.
 
+A section whose `@` is a constant negative expression lies **before the block start**, for example a
+recovery link in front of the block's ID:
+
+```rust
+frame Mdf4DataBlock(magic) align 8 {
+    recovery: [u64; 1] @ -8
+    header { id: ascii(4) where id == magic, … }
+    …
+}
+```
+
+- Such sections must come before all other sections of the frame (an error otherwise).
+- They do not move the layout: the first other section without `@` starts at the block start.
+- Links and `file { }` placements still give the block start (the ID), not the start of these sections.
+- They are not part of dispatch ([7.3](#73-dispatch)), so a slot section may come first.
+- If the block start is too close to the start of the file, the section is shown with
+  `⚠ offset -N is before the start of the file`.
+- The frame's **prefix** is the largest distance of these sections from the block start.
+
 | Section | Syntax | Content |
 |---|---|---|
 | Field section | `name { items }` | Fixed by the frame. Blocks cannot change it |
@@ -371,7 +390,8 @@ The tree shows the sections in frame order, whatever the order in which they wer
 
 ### 6.4 Extent and next block
 
-The **extent** of a block runs from `B` to the largest end of any of its sections. For a frame with
+The **extent** of a block runs from the smallest start to the largest end of any of its sections, so
+it includes sections before the block start. For a frame with
 `align n`, the **next block** starts at the extent's end rounded up to a multiple of `n`.
 
 ---
@@ -429,7 +449,7 @@ Following a link to a list of blocks (a single block counts as a list of one) se
 decode at the target offset `P`:
 
 1. **Candidates, in list order.** For each candidate, decode the field sections of its frame at `P` that
-   come before the frame's first slot or open section, with the candidate's arguments bound. The
+   come before the frame's first slot or open section (skipping the sections before the block start), with the candidate's arguments bound. The
    candidate matches if all `where` checks in these sections pass and none of the fields lie beyond
    the end of the file. The first matching candidate is decoded.
 2. **Other blocks.** If no candidate matches, try the other blocks that use the frame of any candidate,
@@ -571,6 +591,7 @@ These stop the template from being applied. They are shown as `line L:C: message
 - block section that names a field section or no section of the frame
 - link type outside a slot section, disallowed type inside a slot section
 - `@` on a field outside `file { }`
+- a section placed before the block start after another section of the frame
 - `endian` after other declarations or more than once, more than one `file { }`
 - struct or block containing itself by value, cyclic `alias` or `const`
 - `sizeof` of a type with a data-dependent size, `[T; ..]` with an element of size 0
@@ -593,6 +614,7 @@ These are shown inline in the tree with ⚠. Decoding continues.
 | `expected A \| B, found C` | dispatch fell back to another block |
 | `unknown block` | dispatch found no matching block |
 | `link target 0x… is outside the file` | the target offset is past the end of the file |
+| `offset -N is before the start of the file` | a section before the block start would lie before offset 0 |
 | `division by zero`, `type mismatch in expression`, `non-finite value in expression` | evaluation errors |
 | `evaluation limit of 1000000 nodes reached` | decoding stopped |
 
@@ -608,7 +630,9 @@ These are shown inline in the tree with ⚠. Decoding continues.
   - every block and struct.
 - **(by magic)** decodes at the offset (or the cursor, with **cursor** checked) using dispatch over all
   blocks in declaration order. Step 2 of [7.3](#73-dispatch) does not apply, and step 3 shows the raw
-  bytes with `⚠ unknown block`.
+  bytes with `⚠ unknown block`. If no block starts at the offset, the blocks whose frames have a
+  prefix are tried with their start at the offset plus the prefix, so the offset may also be the start
+  of a recovery link, as at **Next block**.
 - **Following a link** works as for lazy links in C templates. It records the view in the navigation history for **←** Back,
   sets Root to the dispatched type and **at** to the target offset, and selects the target in the hex
   view. Root is set to the block that dispatch selected.

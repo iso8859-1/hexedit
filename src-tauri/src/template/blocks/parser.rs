@@ -405,7 +405,7 @@ impl Parser<'_> {
                 let at = if p.eat_punct("@") { Some(p.parse_expr()?) } else { None };
                 (SectionKind::Fields(p.parse_items()?), at)
             };
-            Ok(Section { name, at: kind_at.1, kind: kind_at.0, pos })
+            Ok(Section { name, at: kind_at.1, before: None, kind: kind_at.0, pos })
         })?;
         let mut seen = HashSet::new();
         for s in &sections {
@@ -413,7 +413,7 @@ impl Parser<'_> {
                 return Err(s.pos.err(format!("duplicate frame section '{}'", s.name)));
             }
         }
-        self.t.frames.push(FrameDef { name, params, align_expr, align: 1, sections, pos });
+        self.t.frames.push(FrameDef { name, params, align_expr, align: 1, sections, prefix: 0, pos });
         Ok(())
     }
 
@@ -1176,6 +1176,32 @@ impl Resolver {
                 };
                 self.t.frames[i].align = a;
             }
+            // a constant negative `@` places a section before the block start, e.g. a recovery link
+            let mut started = false;
+            for si in 0..self.t.frames[i].sections.len() {
+                let sec = &self.t.frames[i].sections[si];
+                let before = match &sec.at {
+                    Some(e) => match const_eval(&self.t, e) {
+                        Ok(Value::Int(v)) if v < 0 => Some(v.unsigned_abs().min(u64::MAX as u128) as u64),
+                        _ => None,
+                    },
+                    None => None,
+                };
+                match before {
+                    Some(_) if started => {
+                        return Err(sec.pos.err(format!(
+                            "section '{}' is placed before the block start, so it must come before the other sections",
+                            sec.name
+                        )))
+                    }
+                    Some(k) => {
+                        let f = &mut self.t.frames[i];
+                        f.prefix = f.prefix.max(k);
+                        f.sections[si].before = Some(k);
+                    }
+                    None => started = true,
+                }
+            }
         }
         for i in 0..self.t.blocks.len() {
             let b = &self.t.blocks[i];
@@ -1388,7 +1414,7 @@ impl Validator<'_> {
                     for b in blocks {
                         let blk = &self.t.blocks[b];
                         let f = &self.t.frames[blk.frame];
-                        let checked = f.sections[..f.leading()]
+                        let checked = f.sections[f.leading()]
                             .iter()
                             .any(|s| matches!(&s.kind, SectionKind::Fields(items) if has_checks(items)));
                         let w = format!(

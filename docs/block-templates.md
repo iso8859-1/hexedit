@@ -160,6 +160,27 @@ A frame takes parameters. A block names its frame and supplies arguments. The fr
 sections start where the previous section ended, unless they are placed with `@ expr` (relative to the
 start of the block).
 
+A section can also sit *before* the block start, with a constant negative `@`. Some MDF4 writers put an
+8-byte recovery link in front of DT and DZ blocks: links point at the `##DT`, the recovery link sits just
+before it, and the block's length does not count it. Such a frame starts with that section:
+
+```rust
+frame Mdf4DataBlock(magic) align 8 {
+    recovery: [u64; 1] @ -8
+    header { id: ascii(4) where id == magic, … }
+    …
+}
+
+block DT: Mdf4DataBlock("##DT") {
+    recovery { link: -> HD | DG | DT | … }
+    data     { records: [u8; ..] }
+}
+```
+
+The block in the tree and its selection in the hex view include the recovery link, and **(by magic)**
+finds the block whether the offset is its ID or the recovery link before it, so **Next block** works
+after a block without one.
+
 A block may omit `links { }` (all slots are shown raw) or `data { }` (the section is shown as bytes).
 
 ### Links

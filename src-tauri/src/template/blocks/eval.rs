@@ -814,6 +814,9 @@ impl<'a> Dec<'a> {
 
     /// Evaluates a section placement relative to the block start.
     fn section_start(&self, sec: &Section, base: u64, cur: u64) -> Result<u64, String> {
+        if let Some(k) = sec.before {
+            return base.checked_sub(k).ok_or_else(|| format!("offset -{k} is before the start of the file"));
+        }
         match &sec.at {
             None => Ok(cur),
             Some(e) => match self.eval(e)? {
@@ -860,6 +863,7 @@ impl<'a> Dec<'a> {
         let mut slots: Vec<Option<PendingSlots>> = vec![None; n];
         let mut cur = base;
         let mut ext = base;
+        let mut lo = base;
 
         // pass 1: layout and content
         for (si, sec) in fr.sections.iter().enumerate() {
@@ -936,7 +940,11 @@ impl<'a> Dec<'a> {
             }
             nodes[si] = Some(node);
             ext = ext.max(end);
-            cur = end;
+            lo = lo.min(start);
+            // sections before the block start do not move the block's own layout
+            if sec.before.is_none() {
+                cur = end;
+            }
         }
 
         // pass 2: slot binding, in frame order
@@ -965,7 +973,7 @@ impl<'a> Dec<'a> {
 
         let vars = self.scopes.pop().unwrap();
         self.blocks.pop();
-        let mut node = Node::new(name, &blk.name, base, ext - base, String::new());
+        let mut node = Node::new(name, &blk.name, lo, ext - lo, String::new());
         node.children = nodes.into_iter().flatten().collect();
         (node, vars, ext)
     }
@@ -1122,7 +1130,7 @@ impl<'a> Dec<'a> {
         self.scopes.push(HashMap::new());
         let mut ok = true;
         let mut cur = p;
-        for sec in &fr.sections[..fr.leading()] {
+        for sec in &fr.sections[fr.leading()] {
             let SectionKind::Fields(items) = &sec.kind else { break };
             let Ok(start) = self.section_start(sec, p, cur) else {
                 ok = false;
@@ -1193,9 +1201,18 @@ impl<'a> Dec<'a> {
         if self.t.blocks.is_empty() {
             return Err("the template has no blocks".into());
         }
-        for b in 0..self.t.blocks.len() {
-            if self.probe(b, base) {
-                let mut node = self.block_root(b, base, None);
+        // a block starting at `base`, else one whose sections before its start begin there, as at
+        // "Next block" after a block without them
+        let t = self.t;
+        let starts = (0..t.blocks.len())
+            .map(|b| (b, base))
+            .chain((0..t.blocks.len()).filter_map(|b| match t.frames[t.blocks[b].frame].prefix {
+                0 => None,
+                k => base.checked_add(k).map(|p| (b, p)),
+            }));
+        for (b, p) in starts {
+            if self.probe(b, p) {
+                let mut node = self.block_root(b, p, None);
                 node.dispatched = None;
                 return Ok(node);
             }
