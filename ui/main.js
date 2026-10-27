@@ -264,11 +264,13 @@ function moveCursor(to, extend) {
   emit('cursor');
 }
 
-function selectRange(start, len) {
-  state.anchor = start;
-  state.cursor = Math.max(start, start + len - 1);
+/** Selects `len` bytes from `start`, with the cursor on the last byte, or on the first with `cursorAtStart`. */
+function selectRange(start, len, cursorAtStart = false) {
+  const end = Math.max(start, start + len - 1);
+  state.anchor = cursorAtStart ? end : start;
+  state.cursor = cursorAtStart ? start : end;
   state.nibble = 0;
-  view.scrollTo(state.cursor);
+  view.scrollTo(end);
   view.scrollTo(start);
   emit('cursor');
 }
@@ -505,7 +507,7 @@ async function findNext(backwards) {
       return;
     }
     msg.textContent = `Found at 0x${hex(r.offset)}${wrapped ? ' (wrapped)' : ''}`;
-    selectRange(r.offset, r.len);
+    selectRange(r.offset, r.len, true);
     view.scrollTo(r.offset, true);
   } catch (e) {
     msg.textContent = String(e);
