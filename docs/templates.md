@@ -99,8 +99,11 @@ store it as `ico.h`. Next time, load it with **Open…**.
 | **at** | Start offset. Accepts `0x1F0`, `1F0h` or `496`. |
 | **cursor** | Places the root type at the cursor and follows it as you move. Ignored for template declarations. |
 | **auto** | Re-applies while you type and whenever the file changes. |
-| **←** | Back: returns to the view you were in before following a link (also Alt+← or the mouse back button). |
 | Links in the tree | Underlined values (`→ 0x1A40`) are [lazy links](#lazy-links). Clicking one makes its type the Root at the target offset and selects the target in the hex view. |
+
+To go back after following a link, use **←** in the toolbar (also Alt+← or the mouse back button). It
+belongs to the editor's navigation history, which returns to earlier cursor locations together with the
+template view you had there; **→** (Alt+→) goes forward again, and **▾** lists the locations.
 
 The Root dropdown lists named structs and unions, enum tags, and typedef names. Primitive types such
 as `uint32_t` are not listed.
@@ -238,7 +241,8 @@ The field is decoded as usual, so `next` can still be used in expressions. In th
 becomes a link such as `→ 0x1A40`, and its type reads `uint32_t -> Chunk`. Nothing at the target is
 decoded until you click the link. Clicking it:
 
-1. remembers the current view (Root, offset, expanded rows, scroll position) for **←** Back,
+1. records the current location and view (Root, offset, expanded rows, scroll position) in the
+   navigation history, for the toolbar's **←** Back,
 2. sets Root to `Chunk` and **at** to the target offset,
 3. selects the target in the hex view and decodes `Chunk` there.
 

@@ -274,15 +274,20 @@ function initMenu() {
 
 // Locations to go back and forward to, as in a browser. Go to, find results and
 // followed links are always recorded; other cursor moves only when they leave
-// the part of the file that was visible.
+// the part of the file that was visible. Each location keeps the template tree's
+// view as it was when it was left, so following links can be retraced.
 const NAV_MAX = 50;
 const nav = {
   back: [],       // older locations, the most recent last
   forward: [],    // locations left by going back, the nearest last
-  here: null,     // {cursor, anchor, label}: the current location
+  here: null,     // {cursor, anchor, label}: the current location (`tpl`, the tree's view, once left)
   pending: null,  // {label, force} for the cursor move about to happen
   moving: false,  // moving through the history itself
+  panel: null,    // the TemplatePanel
 };
+
+/** `loc` as it is left, with the tree's current view. */
+const leaving = (loc) => ({ ...loc, tpl: nav.panel?.viewState() });
 
 /** Describes the next cursor move for the history; `force` records it whatever the distance. */
 function navNote(label, force = false) {
@@ -298,7 +303,7 @@ function onNavCursor() {
     nav.here = { ...now, label: prev?.label ?? 'Start' };
   } else if (now.cursor !== prev.cursor
     && (p?.force || Math.abs(now.cursor - prev.cursor) >= view.visibleRows * state.bpr)) {
-    nav.back.push(prev);
+    nav.back.push(leaving(prev));
     if (nav.back.length > NAV_MAX) nav.back.shift();
     nav.forward = [];
     nav.here = { ...now, label: p?.label ?? 'Cursor' };
@@ -314,7 +319,7 @@ function navGo(n) {
   const from = n < 0 ? nav.back : nav.forward;
   const to = n < 0 ? nav.forward : nav.back;
   if (n === 0 || from.length < Math.abs(n)) return;
-  let loc = nav.here;
+  let loc = leaving(nav.here);
   for (let i = 0; i < Math.abs(n); i++) {
     to.push(loc);
     loc = from.pop();
@@ -331,6 +336,7 @@ function navGo(n) {
   } finally {
     nav.moving = false;
   }
+  nav.panel?.restoreView(loc.tpl);
   hexEl.focus();
 }
 
@@ -372,7 +378,7 @@ function initNav() {
   $('btn-forward').onclick = () => navGo(1);
   $('btn-history').onclick = showHistoryMenu;
   // the mouse's back and forward buttons
-  hexEl.addEventListener('mouseup', (e) => {
+  document.addEventListener('mouseup', (e) => {
     if (e.button === 3 || e.button === 4) {
       e.preventDefault();
       navGo(e.button === 3 ? -1 : 1);
@@ -562,6 +568,8 @@ function onHexKey(e) {
   const bpr = state.bpr;
   const c = state.cursor;
   const ext = e.shiftKey;
+  // Alt+← and Alt+→ are back and forward (see main)
+  if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
   switch (e.key) {
     case 'ArrowLeft': moveCursor(c - 1, ext); break;
     case 'ArrowRight': moveCursor(c + 1, ext); break;
@@ -856,7 +864,7 @@ async function main() {
   view.layoutChanged();
 
   new Inspector({ edit, toast });
-  new TemplatePanel({ selectRange, toast });
+  nav.panel = new TemplatePanel({ selectRange, toast });
   initSplitter();
   initTabs();
 
@@ -895,6 +903,11 @@ async function main() {
     const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     const k = e.key.toLowerCase();
     if (e.key === 'F3') { e.preventDefault(); findNext(e.shiftKey); return; }
+    if (e.altKey && !ctrl && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      navGo(e.key === 'ArrowLeft' ? -1 : 1);
+      return;
+    }
     if (!ctrl || e.altKey) return;
     if (k === 'o') { e.preventDefault(); openFile(); }
     else if (k === 'n') { e.preventDefault(); newFile(); }
@@ -902,7 +915,7 @@ async function main() {
     else if (k === 'g') { e.preventDefault(); showGoto(); }
     else if (k === 'f') { e.preventDefault(); showFind(); }
     else if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') {
-      // Ctrl+- / Ctrl+Shift+- as in Visual Studio; this also keeps WebView2 from zooming
+      // also Ctrl+- / Ctrl+Shift+- as in Visual Studio; this keeps WebView2 from zooming
       e.preventDefault();
       navGo(e.shiftKey ? 1 : -1);
     }

@@ -42,8 +42,8 @@
       <button id="btn-find" title="Find (Ctrl+F)">Find</button>
     </div>
     <div class="group">
-      <button id="btn-back" class="icon" title="Back to the previous location (Ctrl+−)" aria-label="Back">←</button>
-      <button id="btn-forward" class="icon" title="Forward (Ctrl+Shift+−)" aria-label="Forward">→</button>
+      <button id="btn-back" class="icon" title="Back to the previous location (Alt+←)" aria-label="Back">←</button>
+      <button id="btn-forward" class="icon" title="Forward (Alt+→)" aria-label="Forward">→</button>
       <button id="btn-history" class="icon" title="Visited locations" aria-label="Visited locations">▾</button>
     </div>
     <div class="spacer"></div>
@@ -119,7 +119,6 @@
         </div>
         <div id="tpl-hsplit" title="Drag to resize"></div>
         <div class="tpl-apply">
-          <button id="tpl-back" class="icon" title="Back to where the last link was followed (Alt+←)" aria-label="Back" disabled>←</button>
           <label>Root <select id="tpl-root"></select></label>
           <label>at <input id="tpl-offset" type="text" value="0x0" spellcheck="false"></label>
           <label class="check" title="Place the root type at the cursor"><input id="tpl-follow" type="checkbox"> cursor</label>
@@ -187,7 +186,7 @@ uint8_t tail[16] @ FILE_SIZE - 16;   // FILE_SIZE: length of the file</pre>
       <code>+ - * / % &lt;&lt; &gt;&gt; &amp; | ^ ~ ! == != &lt; &gt; &amp;&amp; || ?:</code>,
       <code>sizeof(Type)</code> and <code>hdr.field</code> paths.</p>
     <p>Links (<code>-&gt;</code>) are not decoded until clicked. Following one makes the target type the
-      root; <b>←</b> or Alt+← goes back. A link whose value is 0 is shown as <code>null</code>.</p>
+      root; the toolbar's <b>←</b> (Alt+←) goes back to the previous location and view. A link whose value is 0 is shown as <code>null</code>.</p>
     <h2>Block templates</h2>
     <p>Text whose first line is <code>#lang blocks 1</code> is a block template, for formats made of
       self-describing blocks such as MDF4 (see the example). A frame describes the layout blocks share, and

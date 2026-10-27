@@ -39,9 +39,6 @@ export class TemplatePanel {
     this.errorLine = null;
     this.seq = 0;
     this.activeRow = null;
-    // where links were followed from, for Back
-    this.history = [];
-    this.backBtn = document.getElementById('tpl-back');
     // set while the panel itself moves the cursor, so "cursor" mode does not re-apply
     this.selecting = false;
 
@@ -61,19 +58,6 @@ export class TemplatePanel {
     });
     this.editor.addEventListener('scroll', () => { this.gutter.scrollTop = this.editor.scrollTop; });
     this.editor.addEventListener('keydown', (e) => this.onEditorKey(e));
-    this.backBtn.addEventListener('click', () => this.back());
-    document.addEventListener('keydown', (e) => {
-      if (e.altKey && e.key === 'ArrowLeft' && this.history.length) {
-        e.preventDefault();
-        this.back();
-      }
-    });
-    this.tree.addEventListener('mouseup', (e) => {
-      if (e.button === 3 && this.history.length) {
-        e.preventDefault();
-        this.back();
-      }
-    });
     this.rootSel.addEventListener('change', () => {
       this.wantedRoot = this.rootSel.value;
       store('tpl.root', this.wantedRoot);
@@ -144,8 +128,6 @@ export class TemplatePanel {
   }
 
   setSource(text) {
-    this.history = [];
-    this.backBtn.disabled = true;
     // keeps the textarea's undo history
     this.editor.focus();
     this.editor.select();
@@ -210,33 +192,36 @@ export class TemplatePanel {
   }
 
   /**
-   * Decodes the link's type at its target; the current view goes on the Back stack.
-   * Block templates may find another block there, which then becomes the root.
+   * Decodes the link's type at its target. Block templates may find another
+   * block there, which then becomes the root.
    */
   followLink(link) {
-    this.history.push({
-      root: this.rootSel.value,
-      offset: this.offsetIn.value,
-      cursor: state.cursor,
-      expanded: this.expandedPaths(),
-      scroll: this.tree.scrollTop,
-    });
-    this.backBtn.disabled = false;
+    // first, so that the navigation history keeps the view as it is now
+    this.select(link.offset, 0, link.type === BY_MAGIC ? 'Next block' : `Link to ${link.type}`, true);
     this.offsetIn.value = `0x${hex(link.offset, 1)}`;
     store('tpl.offset', this.offsetIn.value);
-    this.select(link.offset, 0, `Link to ${link.type}`, true);
     this.apply({ expanded: new Set(), scroll: 0 }, link.type);
   }
 
-  back() {
-    const h = this.history.pop();
-    this.backBtn.disabled = this.history.length === 0;
-    if (!h) return;
-    this.setRoot(h.root);
-    this.offsetIn.value = h.offset;
-    store('tpl.offset', h.offset);
-    this.select(h.cursor, 0, 'Template back', true);
-    this.apply({ expanded: h.expanded, scroll: h.scroll });
+  /** The tree's view, kept with each location of the navigation history. */
+  viewState() {
+    if (!this.applied) return null;
+    return {
+      root: this.rootSel.value,
+      offset: this.offsetIn.value,
+      expanded: this.expandedPaths(),
+      scroll: this.tree.scrollTop,
+    };
+  }
+
+  /** Returns to a view from `viewState`, unless the template no longer has its root. */
+  restoreView(v) {
+    if (!v || (v.root === this.rootSel.value && v.offset === this.offsetIn.value)) return;
+    if (![...this.rootSel.options].some((o) => o.value === v.root)) return;
+    this.rootSel.value = v.root;
+    this.offsetIn.value = v.offset;
+    store('tpl.offset', v.offset);
+    this.apply({ expanded: v.expanded, scroll: v.scroll });
   }
 
   /** `rootName` is a followed link's type; it replaces the selected root. */

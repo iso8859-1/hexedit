@@ -609,7 +609,7 @@ These are shown inline in the tree with ⚠. Decoding continues.
 - **(by magic)** decodes at the offset (or the cursor, with **cursor** checked) using dispatch over all
   blocks in declaration order. Step 2 of [7.3](#73-dispatch) does not apply, and step 3 shows the raw
   bytes with `⚠ unknown block`.
-- **Following a link** works as for lazy links in C templates. It remembers the view for **←** Back,
+- **Following a link** works as for lazy links in C templates. It records the view in the navigation history for **←** Back,
   sets Root to the dispatched type and **at** to the target offset, and selects the target in the hex
   view. Root is set to the block that dispatch selected.
 - **Next block:** when the root is a block or **(by magic)**, the tree ends with

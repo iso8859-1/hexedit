@@ -228,8 +228,8 @@ target's header and picks the type:
    show `⚠ expected TX | MD, found CC`.
 3. If nothing matches, show the target as raw bytes with `⚠ unknown block`.
 
-Following a link uses the existing navigation: **←** Back returns to the previous block, with its
-expanded rows and scroll position.
+Following a link uses the existing navigation: the toolbar's **←** Back (Alt+←) returns to the
+previous block, with its expanded rows and scroll position.
 
 ## Using it in the app
 
