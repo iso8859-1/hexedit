@@ -21,7 +21,7 @@ A hex editor built with Rust and [Tauri 2](https://tauri.app). It has a data ins
 - **Block templates**: a second template language (first line `#lang blocks 1`) for formats made of
   self-describing blocks, such as MDF4. Frames describe the layout blocks share, `where` checks pick the
   block type at a link's target, and fields can depend on flags and type fields. See
-  **[docs/block-templates.md](docs/block-templates.md)**; an MDF4 example is bundled.
+  **[docs/block-templates.md](docs/block-templates.md)**. Examples are bundled for MDF4 and Vector BLF (CAN logs).
 
 - **Themes**: every theme is a TOML file in `%APPDATA%\dev.hexedit.app\themes`, including the standard
   Light and Dark, so they can be edited, replaced or removed, and new ones added. Choose one in the

@@ -401,3 +401,136 @@ fn help_example() {
     assert!(path(&n, "hd/data/index").value.starts_with("1 "));
     assert_eq!(path(&n, "hd/links/comment").value, "→ 0x40 (TX | HD)");
 }
+
+const BLF: &str = include_str!("../../../../templates/blf.hbt");
+
+/// A BLF object: base header, the v1 (32 bytes) or v2 (40 bytes) header
+/// extension, the body and the padding.
+fn lobj(header_size: u16, ty: u32, body: &[u8]) -> Vec<u8> {
+    let size = header_size as u32 + body.len() as u32;
+    let mut v = b"LOBJ".to_vec();
+    v.extend(header_size.to_le_bytes());
+    v.extend((if header_size == 40 { 2u16 } else { 1u16 }).to_le_bytes());
+    v.extend(size.to_le_bytes());
+    v.extend(ty.to_le_bytes());
+    match header_size {
+        32 => {
+            v.extend(1u32.to_le_bytes()); // time_10us
+            v.extend([0, 0, 0, 0]); // client index, object version
+            v.extend(12_345u64.to_le_bytes());
+        }
+        40 => {
+            v.extend(2u32.to_le_bytes()); // time_1ns
+            v.extend([0, 0, 0, 0]);
+            v.extend(12_345u64.to_le_bytes());
+            v.extend(0u64.to_le_bytes());
+        }
+        _ => {}
+    }
+    v.extend(body);
+    if ty != 101 {
+        v.resize(v.len() + size as usize % 4, 0);
+    }
+    v
+}
+
+fn can_body(extra: usize) -> Vec<u8> {
+    let mut b = vec![1, 0, 0x01, 8]; // channel 1, tx, dlc 8
+    b.extend(0x8000_0123u32.to_le_bytes()); // extended id 0x123
+    b.extend(1..=8u8);
+    b.resize(b.len() + extra, 0);
+    b
+}
+
+fn check_no_errors(n: &Node) {
+    assert!(n.error.is_none(), "{}: {:?}", n.name, n.error);
+    n.children.iter().for_each(check_no_errors);
+}
+
+#[test]
+fn bundled_blf() {
+    use std::io::Write;
+    let t = parse(BLF).unwrap_or_else(|e| panic!("{e}"));
+    assert!(t.warnings.is_empty(), "{:?}", t.warnings);
+    assert!(t.file.is_none());
+
+    let mut d = b"LOGG".to_vec();
+    d.extend(144u32.to_le_bytes());
+    d.extend(4_070_100u32.to_le_bytes());
+    d.extend([5, 6, 1, 2]);
+    d.resize(144, 0);
+
+    let can = lobj(40, 1, &can_body(0));
+    let mut fd64 = vec![1, 5, 5, 0]; // channel, dlc, valid bytes, tx count
+    fd64.resize(40, 0);
+    fd64.extend([0xA, 0xB, 0xC, 0xD, 0xE]);
+    let mut fd = can_body(0)[..8].to_vec();
+    fd.extend([0; 4]); // frame length
+    fd.extend([0, 0x03, 12, 0, 0, 0, 0, 0]); // arb bits, edl+brs, 12 valid bytes, reserved
+    fd.extend([0x5A; 64]);
+    let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    z.write_all(&can).unwrap();
+    let packed = z.finish().unwrap();
+    let mut container = vec![2, 0, 0, 0, 0, 0, 0, 0];
+    container.extend((can.len() as u32).to_le_bytes());
+    container.extend([0; 4]);
+    container.extend(&packed);
+
+    let objects = [
+        ("CanMessage2", lobj(32, 86, &can_body(8))),
+        ("CanFdMessage64", lobj(32, 101, &fd64)), // 77 bytes, no padding
+        ("Object", lobj(32, 999, &[7, 7])),       // 34 bytes + 2 padding
+        ("CanMessage", can.clone()),
+        ("LogContainer", lobj(16, 10, &container)),
+        ("CanFdMessage", lobj(32, 100, &fd)),
+        ("CanErrorExt", lobj(32, 73, &[0; 32])),
+    ];
+    for (_, o) in &objects {
+        d.extend(o);
+    }
+
+    // (by magic) from 0, following "Next block"
+    let mut at = 0u64;
+    let mut seen = vec![];
+    while at < d.len() as u64 {
+        let n = apply(&t, &d, Root::ByMagic, at, &opts()).unwrap();
+        check_no_errors(&n);
+        seen.push((n.ty.clone(), at));
+        at = n.next.as_ref().unwrap().offset;
+    }
+    assert_eq!(at, d.len() as u64);
+    let mut expected = vec![("FileStatistics".to_string(), 0u64)];
+    let mut off = 144;
+    for (name, o) in &objects {
+        expected.push((name.to_string(), off));
+        off += o.len() as u64;
+    }
+    assert_eq!(seen, expected);
+
+    let at = |name: &str| expected.iter().find(|e| e.0 == name).unwrap().1;
+    let fs = apply(&t, &d, Root::ByMagic, 0, &opts()).unwrap();
+    assert!(path(&fs, "statistics/api_number").value.starts_with("4070100"));
+    let m = apply(&t, &d, Root::ByMagic, at("CanMessage2"), &opts()).unwrap();
+    assert!(path(&m, "header/object_flags").value.contains("time_10us"), "{}", path(&m, "header/object_flags").value);
+    assert!(path(&m, "body/flags").value.contains("tx"));
+    assert_eq!(path(&m, "body/data").value, "01 02 03 04 05 06 07 08");
+    let m = apply(&t, &d, Root::ByMagic, at("CanMessage"), &opts()).unwrap();
+    assert!(path(&m, "header/original_timestamp").value.starts_with('0'));
+    let m = apply(&t, &d, Root::ByMagic, at("CanFdMessage64"), &opts()).unwrap();
+    assert_eq!(path(&m, "body/data").size, 5);
+    let m = apply(&t, &d, Root::ByMagic, at("CanFdMessage"), &opts()).unwrap();
+    assert_eq!(path(&m, "body/data").size, 12);
+    assert!(path(&m, "body/fd_flags").value.contains("brs"));
+    let m = apply(&t, &d, Root::ByMagic, at("Object"), &opts()).unwrap();
+    assert_eq!(path(&m, "padding").size, 2);
+
+    // the container's data decompresses into the objects
+    let c = apply(&t, &d, Root::ByMagic, at("LogContainer"), &opts()).unwrap();
+    assert!(path(&c, "body/compression").value.starts_with("zlib"));
+    let data = path(&c, "body/data");
+    let raw = &d[data.offset as usize..(data.offset + data.size) as usize];
+    let inner = crate::compress::inflate(raw, None, 1 << 20).unwrap();
+    assert_eq!(inner.data, can);
+    let n = apply(&t, &inner.data, Root::ByMagic, 0, &opts()).unwrap();
+    assert_eq!(n.ty, "CanMessage");
+}

@@ -452,6 +452,7 @@ fn template_examples() -> Vec<Example> {
         Example { name: "PE / MZ header", text: include_str!("../../templates/pe.h") },
         Example { name: "ZIP local header", text: include_str!("../../templates/zip.h") },
         Example { name: "MDF4 blocks", text: include_str!("../../templates/mdf4.hbt") },
+        Example { name: "Vector BLF", text: include_str!("../../templates/blf.hbt") },
     ]
 }
 

@@ -46,7 +46,9 @@ export class TemplatePanel {
     this.selecting = false;
 
     this.editor.value = load('tpl.source', DEFAULT_SOURCE);
-    this.offsetIn.value = load('tpl.offset', '0x0');
+    // a window opened for decompressed data holds new data: start at its beginning
+    const main = window.__TAURI__.window.getCurrentWindow().label === 'main';
+    this.offsetIn.value = main ? load('tpl.offset', '0x0') : '0x0';
     this.follow.checked = load('tpl.follow', false);
     this.auto.checked = load('tpl.auto', true);
     this.wantedRoot = load('tpl.root', null);
@@ -183,6 +185,8 @@ export class TemplatePanel {
     const values = [...this.rootSel.options].map((o) => o.value);
     if (values.includes(prev)) this.rootSel.value = prev;
     else if (r.has_instances) this.rootSel.value = INSTANCES;
+    // a block template without file { } is walked block by block
+    else if (r.by_magic) this.rootSel.value = BY_MAGIC;
     else if (values.length) this.rootSel.value = values[values.length - 1];
     if (applyAfter && this.auto.checked) this.apply();
     else if (!applyAfter && this.wantedRoot !== null && values.length) this.apply();

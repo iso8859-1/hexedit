@@ -1,0 +1,181 @@
+#lang blocks 1
+// Vector BLF (binary logging format) files, e.g. CAN logs from CANoe/CANalyzer.
+// Use Root "(by magic)" at 0x0: it decodes the LOGG file header, and
+// "Next block" then walks the objects one by one.
+// Most files keep their objects in zlib-compressed LogContainer objects:
+// right-click its "data" row, choose "Open decompressed", and use
+// "(by magic)" at 0x0 in the new window to walk the objects inside. An
+// object can continue in the next container, so the last one may be cut off.
+// Object types without a block of their own are shown as Object.
+endian little
+
+const ANY = -1                           // frame argument: any object type
+
+enum ObjectType: u32 {
+    CAN_MESSAGE = 1, CAN_ERROR = 2, CAN_OVERLOAD = 3, CAN_STATISTIC = 4
+    APP_TRIGGER = 5, ENV_INTEGER = 6, ENV_DOUBLE = 7, ENV_STRING = 8
+    ENV_DATA = 9, LOG_CONTAINER = 10, LIN_MESSAGE = 11, APP_TEXT = 65
+    ETHERNET_FRAME = 71, CAN_ERROR_EXT = 73, CAN_MESSAGE2 = 86
+    GLOBAL_MARKER = 96, CAN_FD_MESSAGE = 100, CAN_FD_MESSAGE_64 = 101
+}
+
+flags ObjectFlags: u32 { time_10us = 0, time_1ns = 1 }   // unit of the timestamp
+
+struct SystemTime {                      // Windows SYSTEMTIME
+    year: u16, month: u16, day_of_week: u16, day: u16
+    hour: u16, minute: u16, second: u16, milliseconds: u16
+}
+
+// ------------------------------------------------------------- file header
+
+frame Logg {
+    header {
+        signature:       ascii(4) where signature == "LOGG"
+        statistics_size: u32
+    }
+    statistics: size(statistics_size - 8)
+}
+
+block FileStatistics: Logg {
+    statistics {
+        api_number:              u32
+        application_id:          u8
+        compression_level:       u8
+        application_major:       u8
+        application_minor:       u8
+        file_size:               u64
+        uncompressed_file_size:  u64
+        object_count:            u32
+        application_build:       u32
+        measurement_start:       SystemTime
+        last_object_time:        SystemTime
+        restore_points_offset:   u64
+    }
+}
+
+// ----------------------------------------------------------------- objects
+
+frame LogObject(expected) {
+    base {
+        signature:      ascii(4) where signature == "LOBJ"
+        header_size:    u16
+        header_version: u16
+        object_size:    u32
+        object_type:    ObjectType where expected == ANY || object_type == expected
+    }
+    header {                             // none for containers (header_size 16)
+        if header_size == 32 {
+            object_flags:   ObjectFlags
+            client_index:   u16
+            object_version: u16
+            timestamp:      u64
+        } else if header_size == 40 {
+            object_flags:       ObjectFlags
+            timestamp_status:   u8
+            _:                  u8
+            object_version:     u16
+            timestamp:          u64
+            original_timestamp: u64
+        }
+    }
+    body: size(object_size - header_size) @ header_size
+    // objects are followed by object_size % 4 padding bytes, except CAN FD 64 messages
+    padding: size(object_type == CAN_FD_MESSAGE_64 ? 0 : object_size % 4) @ object_size
+}
+
+enum Compression: u16 { none = 0, zlib = 2 }
+
+block LogContainer: LogObject(LOG_CONTAINER) {
+    body {
+        compression:       Compression
+        _:                 [u8; 6]
+        uncompressed_size: u32
+        _:                 [u8; 4]
+        data:              [u8; ..]      // the objects, zlib-compressed: "Open decompressed"
+    }
+}
+
+// CAN ids have bit 31 set for extended (29-bit) ids
+flags CanFlags: u8 { tx = 0, tx_request = 1, error_frame = 5, wakeup = 6, remote = 7 }
+flags CanFdFlags: u8 { edl = 0, brs = 1, esi = 2 }
+flags CanFd64Flags: u32 { remote = 4, edl = 12, brs = 13, esi = 14 }
+
+block CanMessage: LogObject(CAN_MESSAGE) {
+    body {
+        channel: u16
+        flags:   CanFlags
+        dlc:     u8
+        id:      u32
+        data:    [u8; 8]
+    }
+}
+
+block CanMessage2: LogObject(CAN_MESSAGE2) {
+    body {
+        channel:         u16
+        flags:           CanFlags
+        dlc:             u8
+        id:              u32
+        data:            [u8; 8]
+        frame_length_ns: u32
+        bit_count:       u8
+        _:               u8
+        _:               u16
+    }
+}
+
+block CanFdMessage: LogObject(CAN_FD_MESSAGE) {
+    body {
+        channel:          u16
+        flags:            CanFlags
+        dlc:              u8
+        id:               u32
+        frame_length_ns:  u32
+        arb_bit_count:    u8
+        fd_flags:         CanFdFlags
+        valid_data_bytes: u8
+        _:                [u8; 5]
+        data:             [u8; valid_data_bytes]
+    }
+}
+
+block CanFdMessage64: LogObject(CAN_FD_MESSAGE_64) {
+    body {
+        channel:                u8
+        dlc:                    u8
+        valid_data_bytes:       u8
+        tx_count:               u8
+        id:                     u32
+        frame_length_ns:        u32
+        flags:                  CanFd64Flags
+        btr_cfg_arb:            u32
+        btr_cfg_data:           u32
+        time_offset_brs_ns:     u32
+        time_offset_crc_del_ns: u32
+        bit_count:              u16
+        dir:                    u8      // 0 = Rx, 1 = Tx
+        ext_data_offset:        u8
+        crc:                    u32
+        data:                   [u8; valid_data_bytes]
+    }
+}
+
+block CanErrorExt: LogObject(CAN_ERROR_EXT) {
+    body {
+        channel:         u16
+        length:          u16
+        flags:           u32
+        ecc:             u8
+        position:        u8
+        dlc:             u8
+        _:               u8
+        frame_length_ns: u32
+        id:              u32
+        flags_ext:       u16
+        _:               u16
+        data:            [u8; 8]
+    }
+}
+
+// any other object type, declared last so that (by magic) tries the others first
+block Object: LogObject(ANY) { }
