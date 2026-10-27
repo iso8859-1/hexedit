@@ -20,13 +20,30 @@ Copy-Item -Recurse editors\vscode "$env:USERPROFILE\.vscode\extensions\hexedit-h
 cp -r editors/vscode ~/.vscode/extensions/hexedit-hbt
 ```
 
-Or package it and install the package:
+Or install a `.vsix` package (see below):
+
+```sh
+code --install-extension editors/vscode/hexedit-hbt-0.1.0.vsix
+```
+
+## Building the .vsix
+
+A `.vsix` is a single file that can be installed with `code --install-extension`, from the
+Extensions view (**…** > **Install from VSIX…**), or shared with others. Building it needs
+[Node.js](https://nodejs.org) (for `npx`); HexEdit itself does not.
 
 ```sh
 cd editors/vscode
-npx @vscode/vsce package          # makes hexedit-hbt-<version>.vsix
-code --install-extension hexedit-hbt-0.1.0.vsix
+npx @vscode/vsce package
 ```
+
+`npx` fetches [vsce](https://github.com/microsoft/vscode-vsce), the official packaging tool, on first
+use. The package is written to `editors/vscode/hexedit-hbt-<version>.vsix`, and git ignores `*.vsix`
+files. `--out <path>` writes it elsewhere.
+
+The version is `version` in `package.json`. Raise it when the grammar changes, so that installing the
+new package replaces the old one. The package contains only the files listed under `files` in
+`package.json` (the grammar, the language configuration, this README and the license).
 
 ## Notes
 
