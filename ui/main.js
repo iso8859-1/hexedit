@@ -442,6 +442,7 @@ function showGoto() {
   input.value = '';
   dlg.returnValue = '';
   dlg.showModal();
+  $('goto-cancel').onclick = () => dlg.close('cancel');
   dlg.onclose = () => {
     hexEl.focus();
     if (dlg.returnValue !== 'ok') return;

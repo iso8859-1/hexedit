@@ -142,7 +142,8 @@
         <input id="goto-input" type="text" spellcheck="false" placeholder="0x1F0, 496, +16, -0x10">
       </label>
       <div class="buttons">
-        <button value="cancel" formnovalidate>Cancel</button>
+        <!-- type="button": Enter submits with the first submit button, which must be Go -->
+        <button id="goto-cancel" type="button">Cancel</button>
         <button value="ok" class="primary">Go</button>
       </div>
     </form>
