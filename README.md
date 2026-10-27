@@ -163,7 +163,7 @@ src-tauri/src/
   themes.rs        theme files (TOML) from the config folder
 ui/                index.html, style.css, main.js (wiring/keys), hexview.js, inspector.js, template.js
 templates/         example templates, embedded into the binary
-themes/            standard themes (Light, Dark, Solarized Dark), installed into the themes folder
+themes/            standard themes (Light, Dark, Solarized Dark, and a high-contrast version of each), installed into the themes folder
 ```
 
 ## Notes

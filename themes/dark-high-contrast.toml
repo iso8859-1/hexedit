@@ -1,0 +1,39 @@
+# HexEdit theme. Files in this folder (*.toml) appear in the Theme menu in the toolbar.
+# Edit a file, then pick "Reload themes" in that menu to see the change.
+#
+# name: shown in the menu; defaults to the file name. "System" uses the themes named
+#       "Light" and "Dark", following the Windows setting.
+# base: "light" or "dark". Colors left out below come from HexEdit's standard light or dark
+#       palette, and the base sets the title bar and native controls (scrollbars, checkboxes).
+#
+# Colors are CSS colors: "#rgb", "#rrggbb", "#rrggbbaa", "rgb(...)", "hsl(...)", or a name like "tomato".
+# Every key is optional.
+
+name = "Dark High Contrast"
+base = "dark"
+
+[colors]
+bg         = "#000000"   # main background: hex view, editor, inputs
+bg-alt     = "#1c1c1c"   # buttons, selects, hovered rows
+bg-panel   = "#0e0e0e"   # toolbar, side panel, status bar, tree header, dialogs
+fg         = "#ffffff"   # main text
+muted      = "#d4d4d4"   # secondary text: labels, tree types/offsets/sizes
+faint      = "#a3a3a3"   # de-emphasized text: past-the-end bytes, unavailable inspector values
+border     = "#a3a3a3"   # borders and separators
+accent     = "#6cc4ff"   # primary button, active tab, focus ring, links, splitter hover
+accent-fg  = "#000000"   # text on the accent color
+sel        = "#0a3480"   # selected bytes, selected tree row
+sel-strong = "#1748a8"   # cursor byte in the focused hex view
+cursor     = "#ffe600"   # cursor outline (filled in insert mode)
+hl         = "#6b4e00"   # bytes of the hovered inspector value / tree row
+error      = "#ff8a80"   # error text
+error-bg   = "#3d0000"   # background of template error messages
+offset     = "#d4d4d4"   # offset column and header of the hex view
+zero       = "#a3a3a3"   # 00 bytes and non-printable characters
+# template field colors, cycled through the decoded fields (backgrounds in the hex view)
+f0         = "#0d4a14"
+f1         = "#14306e"
+f2         = "#5c2a00"
+f3         = "#44175e"
+f4         = "#004750"
+f5         = "#5e0f30"
